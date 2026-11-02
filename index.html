@@ -35,11 +35,12 @@
   .header{position:absolute;top:12px;left:12px;z-index:10;display:flex;flex-direction:column;gap:8px;align-items:flex-start;animation:fade .4s}
   .pill{display:flex;align-items:center;gap:8px;padding:9px 15px;border-radius:20px;font-size:13px;font-weight:700;color:var(--text)}
   .pill .dot{width:8px;height:8px;border-radius:50%;background:#34a853;box-shadow:0 0 8px #34a853;animation:blink 2s infinite}
+  .pill .xbtn{border:none;background:rgba(127,127,127,.2);color:var(--text);border-radius:10px;padding:2px 8px;margin-left:2px;cursor:pointer;font-size:11px;font-weight:800}
   @keyframes blink{0%,100%{opacity:1}50%{opacity:.4}}
   @keyframes fade{from{opacity:0}to{opacity:1}}
 
   /* ===== Alertes ===== */
-  .alerts{position:absolute;top:70px;left:50%;transform:translateX(-50%);z-index:15;display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none;width:min(92%,420px)}
+  .alerts{position:absolute;top:70px;left:50%;transform:translateX(-50%);z-index:25;display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none;width:min(92%,420px)}
   .alert{background:rgba(18,20,26,.92);color:#fff;border-left:4px solid #ff7043;backdrop-filter:blur(10px);border-radius:14px;padding:11px 18px;font-size:13px;font-weight:600;box-shadow:0 8px 24px rgba(0,0,0,.35);animation:drop .3s}
   .alert.warn{border-color:#ffb300}
   .alert.info{border-color:#40c4ff}
@@ -54,9 +55,10 @@
   .panel.collapsed .chev{transform:rotate(180deg)}
   .panel-body{max-height:28vh;overflow-y:auto;padding:0 18px 12px;transition:max-height .25s ease,padding .25s ease}
   .panel.collapsed .panel-body{max-height:0;padding-bottom:0;overflow:hidden}
-  .row{display:flex;align-items:center;gap:11px;padding:9px 0;border-bottom:1px solid var(--glass-border)}
+  .row{display:flex;align-items:center;gap:11px;padding:9px 0;border-bottom:1px solid var(--glass-border);cursor:pointer}
   .row:last-child{border-bottom:none}
   .row.old{opacity:.45}
+  .row.followed{box-shadow:inset 3px 0 0 var(--accent);background:rgba(26,115,232,.08)}
   .avatar{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:15px;flex:none;box-shadow:0 2px 8px rgba(0,0,0,.25)}
   .who{flex:1;min-width:0}
   .who .nm{font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -79,7 +81,7 @@
   .dock-btn.active .lbl{color:var(--accent)}
 
   /* ===== Radio FAB ===== */
-  #btn-radio{position:absolute;right:16px;bottom:110px;width:64px;height:64px;border-radius:50%;background:linear-gradient(145deg,#ff5252,#c62828);color:#fff;font-size:26px;border:4px solid var(--glass);box-shadow:0 8px 24px rgba(198,40,40,.5);z-index:12;cursor:pointer;touch-action:none;user-select:none;-webkit-user-select:none;transition:transform .15s}
+  #btn-radio{position:absolute;right:16px;bottom:110px;width:64px;height:64px;border-radius:50%;background:linear-gradient(145deg,#ff5252,#c62828);color:#fff;font-size:26px;border:4px solid var(--glass);box-shadow:0 8px 24px rgba(198,40,40,.5);z-index:25;cursor:pointer;touch-action:none;user-select:none;-webkit-user-select:none;transition:transform .15s}
   #btn-radio:active{transform:scale(.94)}
   #btn-radio.recording{animation:pulse 1s infinite;box-shadow:0 0 0 8px rgba(198,40,40,.3)}
   @keyframes pulse{0%{transform:scale(1)}50%{transform:scale(1.1)}100%{transform:scale(1)}}
@@ -88,6 +90,7 @@
   .marker{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px;font-weight:800;border:3px solid #fff;box-shadow:0 3px 10px rgba(0,0,0,.45);cursor:pointer}
   .marker.me{border:3px solid #ffeb3b;box-shadow:0 0 0 4px #1a73e8,0 3px 10px rgba(0,0,0,.45)}
   .marker.ghost{opacity:.55;border-style:dashed}
+  .marker.followed{box-shadow:0 0 0 4px #00e676,0 3px 10px rgba(0,0,0,.45)}
 
   /* ===== Overlays ===== */
   .overlay{position:fixed;inset:0;background:rgba(8,10,14,.62);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);z-index:50;display:flex;align-items:center;justify-content:center;padding:20px}
@@ -110,7 +113,7 @@
 
   /* ===== Mode conduite ===== */
   body.driver .header,body.driver .panel,body.driver .dock,body.driver .drive-pill{display:none}
-  body.driver #btn-radio{bottom:24px;right:24px}
+  body.driver #btn-radio{top:70px;bottom:auto;right:16px}
   .driver-ui{position:fixed;inset:0;background:#0b0d10;color:#fff;z-index:20;display:none;flex-direction:column;padding:16px}
   body.driver .driver-ui{display:flex}
   .driver-map{flex:1;border-radius:20px;overflow:hidden;position:relative}
@@ -134,6 +137,7 @@
 <div class="header">
   <span class="pill glass">👥 <b id="group-label">—</b></span>
   <span class="pill glass"><span class="dot"></span><span id="status">démarrage…</span></span>
+  <span class="pill glass hidden" id="follow-pill">🎯 <b id="follow-name"></b><button class="xbtn" id="follow-stop">✕</button></span>
 </div>
 
 <div class="alerts" id="alerts"></div>
@@ -258,6 +262,7 @@ let phoneBattery = null;
 let driverMap = null;
 let driverMode = false;
 let followMe = true;
+let followId = null;   // 🎯 membre suivi en mode normal
 let joined = false;
 let hidden = false;
 let myRef = null, membersRef = null, membersCb = null, radioRef = null, radioCb = null;
@@ -366,6 +371,43 @@ map.on('load', () => {
   map.addLayer({ id:'trail-lines', type:'line', source:'trails',
     paint:{ 'line-width':3, 'line-opacity':0.7, 'line-color':['get','color'] } });
 });
+// Si l'utilisateur déplace la carte manuellement → arrêt du suivi
+map.on('dragstart', () => {
+  if (followId) { followId = null; updateFollowPill(); }
+});
+
+// ============================================================
+// 🎯 Suivi d'un membre
+// ============================================================
+function updateFollowPill(){
+  const on = !!followId;
+  $('#follow-pill').classList.toggle('hidden', !on);
+  if (on) {
+    const v = {...members, ...teslaCars}[followId];
+    $('#follow-name').textContent = v?.name || followId;
+  }
+}
+function toggleFollow(id){
+  if (followId === id) {
+    followId = null;
+  } else {
+    followId = id;
+    const v = {...members, ...teslaCars}[id];
+    if (v && v.lat != null) {
+      map.flyTo({ center:[v.lng, v.lat], zoom: Math.max(map.getZoom(), 14), duration: 1500 });
+    }
+    pushAlert(`🎯 Tu suis ${v?.name || id}`,'info',3000);
+  }
+  updateFollowPill();
+  render();
+}
+$('#follow-stop').onclick = () => { followId = null; updateFollowPill(); render(); };
+// Tap sur une ligne de la liste → suivre
+$('#list').addEventListener('click', e => {
+  const row = e.target.closest('.row');
+  if (!row || !row.dataset.id) return;
+  toggleFollow(row.dataset.id);
+});
 
 // ============================================================
 // Firebase
@@ -451,7 +493,8 @@ function leaveGroup(clearName=false){
   if (myRef) rtdb.set(myRef, null);
   if (membersRef && membersCb) rtdb.off(membersRef, membersCb);
   if (radioRef && radioCb) rtdb.off(radioRef, radioCb);
-  joined = false; hidden = false;
+  joined = false; hidden = false; followId = null;
+  updateFollowPill();
   members = {};
   for (const k of Object.keys(trails)) delete trails[k];
   for (const m of Object.values(markersMain)) m.remove();
@@ -683,6 +726,10 @@ function render(){
     } else markersMain[id].setLngLat([v.lng, v.lat]);
     markersMain[id].setPopup(new maplibregl.Popup({offset:25}).setHTML(
       `<b>${v.name}</b><br>${v.speed?`🚀 ${v.speed} km/h<br>`:''}${v.battery!=null?`🔋 ${v.battery}%<br>`:''}il y a ${ago(v.updatedAt||Date.now())}`));
+    // 🎯 tap sur le marqueur = suivre / arrêter de suivre
+    const elM = markersMain[id].getElement();
+    elM.classList.toggle('followed', id === followId);
+    elM.onclick = () => toggleFollow(id);
   }
   if (driverMap) {
     for (const [id, v] of Object.entries(all)) {
@@ -743,7 +790,7 @@ function render(){
         ? `${rc.km.toFixed(1)} km · ${rc.min} min`
         : `${myEntry ? haversineKm(myEntry.lat,myEntry.lng,v.lat,v.lng).toFixed(1) : '?'} km`;
     }
-    html += `<div class="row ${stale?'old':''}">
+    html += `<div class="row ${stale?'old':''} ${id===followId?'followed':''}" data-id="${id}">
       <div class="avatar" style="background:${v.color||'#888'}">${initialOf(v.name)}</div>
       <div class="who">
         <div class="nm">${v.name||id}</div>
@@ -753,6 +800,12 @@ function render(){
     </div>`;
   }
   $('#list').innerHTML = html || '<div class="row"><span>Personne dans le convoi…</span></div>';
+
+  // 🎯 suivi automatique du membre sélectionné
+  if (followId && !all[followId]) { followId = null; updateFollowPill(); }
+  if (!driverMode && followId && all[followId] && all[followId].lat != null) {
+    map.easeTo({ center:[all[followId].lng, all[followId].lat], duration:1200 });
+  }
 
   if (driverMode) updateDriverUI(all, myEntry);
 }
@@ -813,7 +866,7 @@ $('#btn-exit-driver').onclick = exitDriverMode;
 // 📲 PWA
 // ============================================================
 const SW_CODE = `
-const CACHE = 'fc-v7';
+const CACHE = 'fc-v8';
 self.addEventListener('install', e => { self.skipWaiting(); });
 self.addEventListener('activate', e => { e.waitUntil(self.clients.claim()); });
 self.addEventListener('fetch', e => {
