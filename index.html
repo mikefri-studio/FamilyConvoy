@@ -18,6 +18,7 @@
   .chip button{border:none;background:#1a73e8;color:#fff;border-radius:14px;padding:5px 10px;font-size:12px;margin-left:6px;cursor:pointer;font-weight:600}
   .chip.driver-btn{background:#ff9800;color:#fff;border:none;padding:8px 14px;border-radius:20px;font-weight:700;cursor:pointer}
   .chip.menu-btn{background:#37474f;color:#fff;border:none;padding:8px 12px;border-radius:20px;font-weight:700;cursor:pointer}
+  .chip.icon-btn{background:#fff;border:none;padding:8px 12px;border-radius:20px;font-size:15px;cursor:pointer}
   .panel{position:absolute;bottom:15px;left:50%;transform:translateX(-50%);background:#fff;border-radius:14px;padding:14px 18px;box-shadow:0 4px 20px rgba(0,0,0,.2);width:min(92%,380px);z-index:10;max-height:40vh;overflow-y:auto}
   .panel h2{font-size:15px;margin-bottom:8px}
   .row{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #eee;font-size:14px}
@@ -43,6 +44,11 @@
   .alert.info{border-color:#2196f3}
   .alert.success{border-color:#4caf50}
   @keyframes slideIn{from{transform:translateX(120%);opacity:0}to{transform:translateX(0);opacity:1}}
+  /* Talkie-walkie */
+  #btn-radio{position:absolute;right:16px;bottom:16px;width:66px;height:66px;border-radius:50%;background:#e53935;color:#fff;font-size:28px;border:4px solid #fff;box-shadow:0 4px 14px rgba(0,0,0,.4);z-index:12;cursor:pointer;touch-action:none;user-select:none;-webkit-user-select:none}
+  #btn-radio.recording{background:#b71c1c;animation:pulse 1s infinite}
+  @keyframes pulse{0%{transform:scale(1)}50%{transform:scale(1.12)}100%{transform:scale(1)}}
+  /* Mode conduite */
   body.driver .topbar,body.driver .panel{display:none}
   .driver-ui{position:fixed;inset:0;background:#111;color:#fff;z-index:20;display:none;flex-direction:column;padding:20px}
   body.driver .driver-ui{display:flex}
@@ -50,13 +56,23 @@
   .driver-info{background:#1a1a1a;border-radius:12px;padding:16px;margin-top:10px}
   .driver-info .big{font-size:44px;font-weight:800;line-height:1}
   .driver-info .sub{font-size:14px;color:#888;margin-top:4px}
-  .driver-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+  .driver-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:12px}
   .driver-grid div{background:#222;border-radius:8px;padding:10px}
-  .driver-grid .v{font-size:20px;font-weight:700}
-  .driver-grid .l{font-size:11px;color:#999;text-transform:uppercase}
+  .driver-grid .v{font-size:18px;font-weight:700}
+  .driver-grid .l{font-size:10px;color:#999;text-transform:uppercase}
   .driver-exit{position:absolute;top:15px;right:15px;background:#ff5722;color:#fff;border:none;padding:10px 16px;border-radius:20px;font-weight:700;z-index:5;cursor:pointer}
   #qr-box{display:flex;justify-content:center;margin:12px 0}
   #qr-box img,#qr-box canvas{border-radius:8px}
+  /* 🌙 Mode nuit */
+  body.night{background:#000}
+  body.night .maplibregl-canvas{filter:invert(1) hue-rotate(180deg) brightness(.9) saturate(.6)}
+  body.night .panel,body.night .chip,body.night .card,body.night .alert{background:#1e1e1e;color:#eee}
+  body.night .panel h2,body.night .row .d{color:#bbb}
+  body.night .row{border-color:#333}
+  body.night .card input{background:#2a2a2a;color:#eee;border-color:#444}
+  body.night .card label{color:#bbb}
+  body.night .hint{color:#999}
+  body.night .chip.icon-btn,body.night .chip.menu-btn{background:#333}
 </style>
 </head>
 <body>
@@ -68,6 +84,10 @@
   <span class="chip"><button id="btn-menu" class="menu-btn">⚙️</button></span>
   <span class="chip"><button id="btn-share">📤 Inviter</button></span>
   <span class="chip"><button id="btn-driver" class="driver-btn">🚗 Conduite</button></span>
+  <span class="chip"><button id="btn-radio-top" class="icon-btn hidden">️</button></span>
+  <span class="chip"><button id="btn-history" class="icon-btn">📊</button></span>
+  <span class="chip"><button id="btn-voice" class="icon-btn">🔊</button></span>
+  <span class="chip"><button id="btn-night" class="icon-btn">🌙</button></span>
   <span class="chip hidden" id="tesla-chip"><button id="btn-tesla">⚡ Tesla</button></span>
   <span class="chip" id="status">📡 démarrage…</span>
 </div>
@@ -79,6 +99,8 @@
   <div id="list"><div class="row"><span>Chargement…</span></div></div>
 </div>
 
+<button id="btn-radio" title="Maintiens pour parler">🎙️</button>
+
 <div class="driver-ui">
   <div class="driver-map" id="driver-map">
     <button class="driver-exit" id="btn-exit-driver">✕ Quitter</button>
@@ -88,7 +110,8 @@
     <div class="sub" id="d-next-name">véhicule le plus proche</div>
     <div class="driver-grid">
       <div><div class="v" id="d-my-speed">—</div><div class="l">Ma vitesse</div></div>
-      <div><div class="v" id="d-my-bat">—</div><div class="l">🔋 Téléphone</div></div>
+      <div><div class="v" id="d-my-bat">—</div><div class="l">🔋 Tél.</div></div>
+      <div><div class="v" id="d-trip">0 km</div><div class="l">🛣️ Mon trajet</div></div>
       <div><div class="v" id="d-count">0</div><div class="l">Véhicules</div></div>
       <div><div class="v" id="d-eta">—</div><div class="l">MAJ</div></div>
     </div>
@@ -104,11 +127,11 @@
     <label>Code du groupe</label>
     <input id="inp-group" placeholder="Ex : NOEL2026">
     <button id="btn-join">Rejoindre le convoi</button>
-    <p class="hint">📌 Tape le code du groupe (ou scanne un QR code d'invitation). Chaque appareil ne le tape qu'UNE seule fois : ensuite c'est automatique.</p>
+    <p class="hint">📌 Tape le code du groupe (ou scanne un QR code d'invitation). Une seule fois : ensuite c'est automatique.</p>
   </div>
 </div>
 
-<!-- Overlay menu du convoi -->
+<!-- Overlay menu -->
 <div class="overlay hidden" id="menu-overlay">
   <div class="card">
     <h1>⚙️ Convoi : <span id="menu-group">—</span></h1>
@@ -130,6 +153,15 @@
   </div>
 </div>
 
+<!-- Overlay historique -->
+<div class="overlay hidden" id="history-overlay">
+  <div class="card">
+    <h1>📊 Historique des trajets</h1>
+    <div id="history-list" style="max-height:50vh;overflow-y:auto"><div class="row"><span>Chargement…</span></div></div>
+    <button id="btn-close-history" class="secondary">Fermer</button>
+  </div>
+</div>
+
 <script type="module">
 // ============================================================
 // CONFIG
@@ -147,28 +179,33 @@ const FIREBASE_CONFIG = {
   appId: "1:378869564440:web:2c286789be6e783c99af6d"
 };
 
-const TESLA_WORKER_URL = ""; // ex: https://tesla-convoy.xxx.workers.dev
+const TESLA_WORKER_URL = "";
 
 // ============================================================
 // État global
 // ============================================================
 const $ = s => document.querySelector(s);
 const deviceId = localStorage.getItem('fc_id') || (localStorage.setItem('fc_id', crypto.randomUUID()), localStorage.getItem('fc_id'));
-const me = { id: deviceId, name:'', group:'', lat:null, lng:null, speed:0, battery:null, lastMoved:Date.now() };
+const me = { id: deviceId, name:'', group:'', lat:null, lng:null, speed:0, battery:null };
 let members = {};
 let teslaCars = {};
 const markersMain = {};
 const markersDriver = {};
 const trails = {};
 const alertState = {};
+const routeCache = {};
 let boundsDone = false;
 let phoneBattery = null;
 let driverMap = null;
 let driverMode = false;
 let followMe = true;
-let joined = false;   // suis-je dans un convoi ?
-let hidden = false;   // position masquée ?
-let myRef = null, membersRef = null, membersCb = null;
+let joined = false;
+let hidden = false;
+let myRef = null, membersRef = null, membersCb = null, radioRef = null, radioCb = null;
+let voiceOn = true;
+let nightManual = null;
+let myHeading = null;
+let trip = null;
 
 const PALETTE = ['#e53935','#8e24aa','#3949ab','#00897b','#f4511e','#6d4c41','#d81b60','#1e88e5'];
 const colorFor = id => PALETTE[[...id].reduce((a,c)=>a+c.charCodeAt(0),0) % PALETTE.length];
@@ -178,10 +215,53 @@ function haversineKm(lat1,lng1,lat2,lng2){
   const a=Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)**2;
   return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
 }
+function bearingDeg(lat1,lng1,lat2,lng2){
+  const r=x=>x*Math.PI/180, d=x=>x*180/Math.PI;
+  const y=Math.sin(r(lng2-lng1))*Math.cos(r(lat2));
+  const x=Math.cos(r(lat1))*Math.sin(r(lat2))-Math.sin(r(lat1))*Math.cos(r(lat2))*Math.cos(r(lng2-lng1));
+  return (d(Math.atan2(y,x))+360)%360;
+}
 const ago = ts => { const s=Math.round((Date.now()-ts)/1000); return s<60?`${s}s`:`${Math.round(s/60)}min`; };
 
 // ============================================================
-// 🔔 Alertes
+// 🗣️ Synthèse vocale
+// ============================================================
+function speak(txt){
+  if (!voiceOn || !('speechSynthesis' in window)) return;
+  const clean = txt.replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/gu,'');
+  const u = new SpeechSynthesisUtterance(clean);
+  u.lang = 'fr-FR'; u.rate = 1.05;
+  speechSynthesis.speak(u);
+}
+$('#btn-voice').onclick = () => {
+  voiceOn = !voiceOn;
+  $('#btn-voice').textContent = voiceOn ? '🔊' : '🔇';
+  if (voiceOn) speak('Voix activée');
+};
+function relativePos(v){
+  if (myHeading == null) return '';
+  const b = bearingDeg(me.lat, me.lng, v.lat, v.lng);
+  const diff = ((b - myHeading + 540) % 360) - 180;
+  return Math.abs(diff) < 90 ? 'devant toi' : 'derrière toi';
+}
+// Annonce périodique (en conduite)
+setInterval(()=>{
+  if (!joined || !voiceOn) return;
+  if (!(driverMode || me.speed > 20)) return;
+  const all = {...members, ...teslaCars};
+  const my = all[me.id];
+  if (!my || me.lat == null) return;
+  let nearest=null, minD=Infinity;
+  for (const [id,v] of Object.entries(all)){
+    if (id===me.id || v.lat==null) continue;
+    const d = haversineKm(my.lat,my.lng,v.lat,v.lng);
+    if (d<minD){ minD=d; nearest=v; }
+  }
+  if (nearest) speak(`${nearest.name} est à ${minD.toFixed(1)} kilomètres ${relativePos(nearest)}`);
+}, 120000);
+
+// ============================================================
+// 🔔 Alertes (visuelles + vocales)
 // ============================================================
 function pushAlert(msg, type='warn', ttl=6000){
   const el = document.createElement('div');
@@ -189,8 +269,27 @@ function pushAlert(msg, type='warn', ttl=6000){
   el.textContent = msg;
   $('#alerts').prepend(el);
   if (navigator.vibrate) navigator.vibrate(type==='warn'?[200,100,200]:[100]);
+  if (type==='warn') speak(msg);
   setTimeout(()=>el.remove(), ttl);
 }
+
+// ============================================================
+// 🌙 Mode nuit automatique
+// ============================================================
+function applyNight(on){
+  document.body.classList.toggle('night', on);
+  $('#btn-night').textContent = on ? '☀️' : '🌙';
+}
+function autoNight(){
+  if (nightManual !== null) return applyNight(nightManual);
+  const h = new Date().getHours();
+  applyNight(h >= 21 || h < 7);
+}
+$('#btn-night').onclick = () => {
+  nightManual = !document.body.classList.contains('night');
+  applyNight(nightManual);
+};
+autoNight(); setInterval(autoNight, 60000);
 
 // ============================================================
 // 🗺️ Carte principale
@@ -203,10 +302,8 @@ const map = new maplibregl.Map({
 map.addControl(new maplibregl.NavigationControl(),'top-right');
 map.on('load', () => {
   map.addSource('trails', { type:'geojson', data:{ type:'FeatureCollection', features:[] } });
-  map.addLayer({
-    id:'trail-lines', type:'line', source:'trails',
-    paint:{ 'line-width':3, 'line-opacity':0.7, 'line-color':['get','color'] }
-  });
+  map.addLayer({ id:'trail-lines', type:'line', source:'trails',
+    paint:{ 'line-width':3, 'line-opacity':0.7, 'line-color':['get','color'] } });
 });
 
 // ============================================================
@@ -224,11 +321,15 @@ function startGPS(){
   if (!navigator.geolocation){ $('#status').textContent='❌ GPS non supporté'; return; }
   navigator.geolocation.watchPosition(p => {
     const newLat=p.coords.latitude, newLng=p.coords.longitude;
-    if (me.lat!=null && haversineKm(me.lat,me.lng,newLat,newLng)*1000 > 15) me.lastMoved = Date.now();
+    if (me.lat != null) {
+      const moved = haversineKm(me.lat,me.lng,newLat,newLng)*1000;
+      if (moved > 20) myHeading = bearingDeg(me.lat,me.lng,newLat,newLng);
+    }
+    if (p.coords.heading != null && me.speed > 5) myHeading = p.coords.heading;
     me.lat = newLat; me.lng = newLng;
     me.speed = Math.round((p.coords.speed||0)*3.6);
     $('#status').textContent = joined
-      ? `${hidden?'👻':'📍'} GPS (±${Math.round(p.coords.accuracy)}m, ${me.speed}km/h)`
+      ? `${hidden?'👻':''} GPS (±${Math.round(p.coords.accuracy)}m, ${me.speed}km/h)`
       : '💤 hors convoi';
   }, e => { $('#status').textContent = '📍 GPS refusé'; pushAlert('⚠️ Autorise la géolocalisation','warn'); },
   { enableHighAccuracy:true, maximumAge:2000, timeout:15000 });
@@ -240,14 +341,13 @@ if (navigator.getBattery) navigator.getBattery().then(b => {
 });
 
 // ============================================================
-// 🔋 Wake Lock : écran allumé
+// 🔋 Wake Lock
 // ============================================================
 let wakeLock = null;
 async function keepScreenOn(){
   try {
     wakeLock = await navigator.wakeLock.request('screen');
-    wakeLock.addEventListener('release', () => console.log('Wake Lock relâché'));
-  } catch(e){ console.warn('Wake Lock non supporté'); }
+  } catch(e){}
 }
 document.addEventListener('visibilitychange', () => {
   if (wakeLock !== null && document.visibilityState === 'visible') keepScreenOn();
@@ -264,9 +364,18 @@ function startSharing(){
   membersRef = rtdb.ref(db, `convoy/${me.group}/members`);
   membersCb = snap => { members = snap.val() || {}; detectAlerts(); render(); };
   rtdb.onValue(membersRef, membersCb);
+  // ️ Radio du convoi
+  radioRef = rtdb.ref(db, `convoy/${me.group}/radio`);
+  radioCb = snap => {
+    const m = snap.val();
+    if (!m || m.from === me.id) return;
+    if (Date.now() - m.ts > 120000) return;
+    playRadio(m);
+  };
+  rtdb.onChildAdded(radioRef, radioCb);
+  setTimeout(updateRoutes, 4000);
 }
 
-// Envoi de ma position (intervalle unique, créé une seule fois)
 setInterval(() => {
   if (!joined || hidden || me.lat == null || !myRef) return;
   rtdb.set(myRef, {
@@ -277,11 +386,13 @@ setInterval(() => {
 }, 5000);
 
 // ============================================================
-// 🚪 Quitter / changer de convoi
+// 🚪 Quitter / changer
 // ============================================================
 function leaveGroup(clearName=false){
-  if (myRef) rtdb.set(myRef, null);                 // supprime ma position chez les autres
+  endTrip();
+  if (myRef) rtdb.set(myRef, null);
   if (membersRef && membersCb) rtdb.off(membersRef, membersCb);
+  if (radioRef && radioCb) rtdb.off(radioRef, radioCb);
   joined = false; hidden = false;
   members = {};
   for (const k of Object.keys(trails)) delete trails[k];
@@ -293,13 +404,12 @@ function leaveGroup(clearName=false){
   localStorage.removeItem('fc_group');
   if (clearName) localStorage.removeItem('fc_name');
   boundsDone = false;
-  myRef = null; membersRef = null; membersCb = null;
+  myRef = null; membersRef = null; membersCb = null; radioRef = null; radioCb = null;
   me.group = '';
   $('#group-label').textContent = '—';
   $('#status').textContent = '💤 hors convoi';
   render();
 }
-
 function showJoinOverlay(withName){
   $('#overlay').classList.remove('hidden');
   $('#inp-name').value = withName ? (localStorage.getItem('fc_name') || '') : '';
@@ -307,14 +417,13 @@ function showJoinOverlay(withName){
 }
 
 // ============================================================
-// 🚨 Détection d'événements
+// 🚨 Alertes intelligentes
 // ============================================================
 function detectAlerts(){
   const myEntry = members[me.id];
   for (const [id, v] of Object.entries(members)) {
     if (!v.updatedAt || v.lat == null) continue;
     const fresh = Date.now() - v.updatedAt < 120000;
-
     if (id !== me.id && fresh) {
       const stopped = (v.speed||0) < 5;
       const k = 'stop_'+id;
@@ -325,19 +434,16 @@ function detectAlerts(){
       }
       else if (!stopped) { alertState[k]=null; alertState[k+'_fired']=false; }
     }
-
     if (v.battery != null && v.battery < 20) {
       const k = 'bat_'+id;
       if (!alertState[k]) { alertState[k]=true; pushAlert(`🔋 Batterie faible : ${v.name} (${v.battery}%)`,'warn'); }
     }
-
     if (id !== me.id && fresh && myEntry) {
       const dist = haversineKm(myEntry.lat, myEntry.lng, v.lat, v.lng);
       const k = 'far_'+id;
       if (dist > 20 && !alertState[k]) { alertState[k]=true; pushAlert(`↔️ ${v.name} est loin (${dist.toFixed(0)} km)`,'info'); }
       else if (dist < 15) alertState[k]=false;
     }
-
     if (!fresh) {
       const k = 'stale_'+id;
       if (!alertState[k]) { alertState[k]=true; pushAlert(`📵 ${v.name} : pas de signal depuis ${ago(v.updatedAt)}`,'warn',8000); }
@@ -346,7 +452,128 @@ function detectAlerts(){
 }
 
 // ============================================================
-// ⚡ Tesla (si Worker configuré)
+// 🛣️ Itinéraire réel (OSRM, gratuit sans clé)
+// ============================================================
+async function updateRoutes(){
+  if (!joined || me.lat == null) return;
+  const all = {...members, ...teslaCars};
+  for (const [id, v] of Object.entries(all)) {
+    if (id === me.id || v.lat == null) continue;
+    try {
+      const url = `https://router.project-osrm.org/route/v1/driving/${me.lng},${me.lat};${v.lng},${v.lat}?overview=false`;
+      const j = await (await fetch(url)).json();
+      if (j.code === 'Ok' && j.routes && j.routes[0]) {
+        routeCache[id] = { km: j.routes[0].distance/1000, min: Math.round(j.routes[0].duration/60), ts: Date.now() };
+      }
+    } catch(e){}
+  }
+  render();
+}
+setInterval(updateRoutes, 30000);
+
+// ============================================================
+// 📊 Historique des trajets
+// ============================================================
+function tripTick(){
+  if (!joined || me.lat == null) return;
+  const now = Date.now();
+  if (!trip) trip = { id:`${now}`, start:now, last:now, dist:0, lastLat:me.lat, lastLng:me.lng, points:[[me.lng, me.lat]] };
+  const d = haversineKm(trip.lastLat, trip.lastLng, me.lat, me.lng);
+  if (d*1000 > 60) {
+    trip.dist += d;
+    trip.points.push([me.lng, me.lat]);
+    if (trip.points.length > 600) trip.points.shift();
+    trip.lastLat = me.lat; trip.lastLng = me.lng;
+    trip.lastMove = now;
+  }
+  trip.last = now;
+  $('#d-trip').textContent = `${trip.dist.toFixed(1)} km`;
+  if (trip.dist > 0.3 && now - (trip.lastMove||trip.start) > 15*60000) endTrip();
+}
+setInterval(tripTick, 10000);
+
+function endTrip(){
+  if (!trip || trip.dist < 0.3) { trip = null; return; }
+  const summary = {
+    name: me.name, start: trip.start, end: Date.now(),
+    km: +trip.dist.toFixed(1),
+    min: Math.round((Date.now()-trip.start)/60000),
+    points: trip.points
+  };
+  if (joined && db && me.group) rtdb.set(rtdb.ref(db, `convoy/${me.group}/history/${trip.id}`), summary);
+  const local = JSON.parse(localStorage.getItem('fc_trips')||'[]');
+  local.unshift(summary);
+  localStorage.setItem('fc_trips', JSON.stringify(local.slice(0,20)));
+  trip = null;
+  $('#d-trip').textContent = '0 km';
+}
+window.addEventListener('beforeunload', endTrip);
+
+$('#btn-history').onclick = async () => {
+  $('#history-overlay').classList.remove('hidden');
+  const listEl = $('#history-list');
+  listEl.innerHTML = '<div class="row"><span>Chargement…</span></div>';
+  let items = [];
+  if (joined && me.group) {
+    try {
+      const snap = await rtdb.get(rtdb.ref(db, `convoy/${me.group}/history`));
+      items = Object.values(snap.val() || {});
+    } catch(e){}
+  }
+  const local = JSON.parse(localStorage.getItem('fc_trips')||'[]');
+  const seen = new Set(items.map(i=>i.start));
+  for (const l of local) if (!seen.has(l.start)) items.push(l);
+  items.sort((a,b)=>b.start-a.start);
+  items = items.slice(0,15);
+  listEl.innerHTML = items.length ? items.map(i=>
+    `<div class="row"><span>🗓️ ${new Date(i.start).toLocaleDateString('fr-FR')} — ${i.name||'?'}</span><span class="d">${i.km} km · ${i.min} min</span></div>`
+  ).join('') : '<div class="row"><span>Aucun trajet enregistré pour l\'instant</span></div>';
+};
+$('#btn-close-history').onclick = () => $('#history-overlay').classList.add('hidden');
+
+// ============================================================
+// 🎙️ Talkie-walkie
+// ============================================================
+let mediaRec = null, radioChunks = [];
+const btnRadio = $('#btn-radio');
+function blobToBase64(blob){
+  return new Promise(res => { const r = new FileReader(); r.onloadend = () => res(r.result.split(',')[1]); r.readAsDataURL(blob); });
+}
+function playRadio(m){
+  pushAlert(`📻 ${m.name} parle…`,'info',4000);
+  const audio = new Audio(`data:${m.mime||'audio/webm'};base64,${m.data}`);
+  audio.play().catch(()=>{});
+}
+btnRadio.addEventListener('pointerdown', async e => {
+  e.preventDefault();
+  if (!joined) { pushAlert('Rejoins d\'abord un convoi','info'); return; }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({audio:true});
+    mediaRec = new MediaRecorder(stream);
+    radioChunks = [];
+    mediaRec.ondataavailable = ev => radioChunks.push(ev.data);
+    mediaRec.onstop = async () => {
+      stream.getTracks().forEach(t=>t.stop());
+      const blob = new Blob(radioChunks, {type: mediaRec.mimeType || 'audio/webm'});
+      if (blob.size < 500) return;
+      if (blob.size > 400000) { pushAlert('🎙️ Message trop long','warn'); return; }
+      const b64 = await blobToBase64(blob);
+      rtdb.set(rtdb.ref(db, `convoy/${me.group}/radio/${Date.now()}_${me.id.slice(0,8)}`),
+        { from: me.id, name: me.name, data: b64, mime: blob.type, ts: Date.now() });
+      pushAlert('📻 Message envoyé','success',3000);
+    };
+    mediaRec.start();
+    btnRadio.classList.add('recording');
+    if (navigator.vibrate) navigator.vibrate(50);
+  } catch(err){ pushAlert('🎙️ Micro refusé','warn'); }
+});
+['pointerup','pointercancel','pointerleave'].forEach(ev =>
+  btnRadio.addEventListener(ev, () => {
+    if (mediaRec && mediaRec.state === 'recording') { mediaRec.stop(); btnRadio.classList.remove('recording'); }
+  }));
+
+// ============================================================
+// ⚡ Tesla
 // ============================================================
 if (TESLA_WORKER_URL) {
   $('#tesla-chip').classList.remove('hidden');
@@ -382,8 +609,6 @@ function makeMarkerEl(id, v){
 // ============================================================
 function render(){
   const all = {...members, ...teslaCars};
-
-  // Si je masque ma position : je me vois quand même moi (en fantôme)
   if (joined && hidden && me.lat != null) {
     all[me.id] = { name: me.name+' 👻', lat: me.lat, lng: me.lng, speed: me.speed,
                    battery: phoneBattery, color: colorFor(me.id), updatedAt: Date.now() };
@@ -394,25 +619,19 @@ function render(){
     if (!markersMain[id]) {
       markersMain[id] = new maplibregl.Marker({element: makeMarkerEl(id, v)})
         .setLngLat([v.lng, v.lat]).addTo(map);
-    } else {
-      markersMain[id].setLngLat([v.lng, v.lat]);
-    }
+    } else markersMain[id].setLngLat([v.lng, v.lat]);
     markersMain[id].setPopup(new maplibregl.Popup({offset:25}).setHTML(
       `<b>${v.name}</b><br>${v.speed?`🚀 ${v.speed} km/h<br>`:''}${v.battery!=null?`🔋 ${v.battery}%<br>`:''}il y a ${ago(v.updatedAt||Date.now())}`));
   }
-
   if (driverMap) {
     for (const [id, v] of Object.entries(all)) {
       if (v.lat == null) continue;
       if (!markersDriver[id]) {
         markersDriver[id] = new maplibregl.Marker({element: makeMarkerEl(id, v)})
           .setLngLat([v.lng, v.lat]).addTo(driverMap);
-      } else {
-        markersDriver[id].setLngLat([v.lng, v.lat]);
-      }
+      } else markersDriver[id].setLngLat([v.lng, v.lat]);
     }
   }
-
   for (const id of Object.keys(markersMain)) if (!all[id] || all[id].lat==null){ markersMain[id].remove(); delete markersMain[id]; }
   for (const id of Object.keys(markersDriver)) if (!all[id] || all[id].lat==null){ markersDriver[id].remove(); delete markersDriver[id]; }
 
@@ -441,7 +660,6 @@ function render(){
     Object.values(all).forEach(v => v.lat!=null && b.extend([v.lng, v.lat]));
     map.fitBounds(b, {padding:60, maxZoom:12}); boundsDone = true;
   }
-
   if (driverMode && followMe && me.lat!=null && driverMap) {
     driverMap.easeTo({ center:[me.lng, me.lat], zoom:15, duration:1500 });
   }
@@ -456,10 +674,17 @@ function render(){
   });
   for (const [id, v] of sorted) {
     const stale = v.updatedAt && Date.now()-v.updatedAt > 120000;
-    const dist = myEntry && id!==me.id ? `${haversineKm(myEntry.lat,myEntry.lng,v.lat,v.lng).toFixed(1)} km` : (id===me.id?'(toi)':'');
+    let distTxt;
+    if (id === me.id) distTxt = '(toi)';
+    else {
+      const rc = routeCache[id];
+      distTxt = (rc && Date.now()-rc.ts < 90000)
+        ? `🛣️ ${rc.km.toFixed(1)} km · ${rc.min} min`
+        : `${haversineKm(myEntry.lat,myEntry.lng,v.lat,v.lng).toFixed(1)} km`;
+    }
     html += `<div class="row ${stale?'old':''}">
       <span>${v.name||id} ${v.battery!=null?`🔋${v.battery}%`:''} ${stale?'⚠️':''}</span>
-      <span class="d">${dist} ${v.updatedAt?`· ${ago(v.updatedAt)}`:''}</span></div>`;
+      <span class="d">${distTxt} ${v.updatedAt?`· ${ago(v.updatedAt)}`:''}</span></div>`;
   }
   $('#list').innerHTML = html || '<div class="row"><span>Personne dans le convoi…</span></div>';
 
@@ -476,22 +701,17 @@ function enterDriverMode(){
     driverMap = new maplibregl.Map({
       container:'driver-map',
       style:`https://api.maptiler.com/maps/${MAPTILER_STYLE_ID}/style.json?key=${MAPTILER_KEY}`,
-      center:[me.lng||2.35, me.lat||48.85],
-      zoom:15, pitch:45
+      center:[me.lng||2.35, me.lat||48.85], zoom:15, pitch:45
     });
     driverMap.addControl(new maplibregl.NavigationControl(),'top-left');
     driverMap.on('dragstart', ()=> followMe=false);
     driverMap.on('load', () => {
       driverMap.addSource('trails-d', { type:'geojson', data:{ type:'FeatureCollection', features:[] } });
-      driverMap.addLayer({
-        id:'trail-lines-d', type:'line', source:'trails-d',
-        paint:{ 'line-width':3, 'line-opacity':0.7, 'line-color':['get','color'] }
-      });
+      driverMap.addLayer({ id:'trail-lines-d', type:'line', source:'trails-d',
+        paint:{ 'line-width':3, 'line-opacity':0.7, 'line-color':['get','color'] } });
       render();
     });
-  } else {
-    setTimeout(()=> driverMap.resize(), 50);
-  }
+  } else setTimeout(()=> driverMap.resize(), 50);
   setTimeout(render, 150);
   if (screen.orientation?.lock) screen.orientation.lock('landscape').catch(()=>{});
 }
@@ -502,14 +722,15 @@ function exitDriverMode(){
 }
 function updateDriverUI(all, myEntry){
   if (!myEntry) return;
-  let nearest=null, minD=Infinity;
+  let nearest=null, minD=Infinity, nearestId=null;
   for (const [id,v] of Object.entries(all)) {
     if (id===me.id || v.lat==null) continue;
     const d = haversineKm(myEntry.lat, myEntry.lng, v.lat, v.lng);
-    if (d<minD){ minD=d; nearest=v; }
+    if (d<minD){ minD=d; nearest=v; nearestId=id; }
   }
-  $('#d-next-dist').textContent = nearest ? `${minD.toFixed(1)} km` : '— km';
-  $('#d-next-name').textContent = nearest ? `👉 ${nearest.name}` : 'tu es seul';
+  const rc = nearestId ? routeCache[nearestId] : null;
+  $('#d-next-dist').textContent = (rc && Date.now()-rc.ts<90000) ? `${rc.km.toFixed(1)} km` : (nearest ? `${minD.toFixed(1)} km` : '— km');
+  $('#d-next-name').textContent = nearest ? `👉 ${nearest.name} · ${relativePos(nearest)||'position'}` : 'tu es seul';
   $('#d-my-speed').textContent = `${me.speed||0} km/h`;
   $('#d-my-bat').textContent = phoneBattery!=null ? `${phoneBattery}%` : '—';
   $('#d-count').textContent = Object.keys(all).length;
@@ -519,10 +740,10 @@ $('#btn-driver').onclick = enterDriverMode;
 $('#btn-exit-driver').onclick = exitDriverMode;
 
 // ============================================================
-// 📲 PWA Service Worker
+// 📲 PWA
 // ============================================================
 const SW_CODE = `
-const CACHE = 'fc-v5';
+const CACHE = 'fc-v6';
 self.addEventListener('install', e => { self.skipWaiting(); });
 self.addEventListener('activate', e => { e.waitUntil(self.clients.claim()); });
 self.addEventListener('fetch', e => {
@@ -555,11 +776,12 @@ function join(){
   startSharing();
   keepScreenOn();
   pushAlert(`✅ Rejoint le convoi ${me.group}`, 'success');
+  speak(`Convoi ${me.group} rejoint`);
 }
 $('#btn-join').onclick = join;
 
 // ============================================================
-// ⚙️ Menu du convoi
+// ⚙️ Menu
 // ============================================================
 $('#btn-menu').onclick = () => {
   $('#menu-group').textContent = me.group || '—';
@@ -567,33 +789,26 @@ $('#btn-menu').onclick = () => {
   $('#menu-overlay').classList.remove('hidden');
 };
 $('#btn-close-menu').onclick = () => $('#menu-overlay').classList.add('hidden');
-
 $('#btn-toggle-hide').onclick = () => {
   if (!joined) { pushAlert('Rejoins d\'abord un convoi','info'); return; }
   hidden = !hidden;
-  if (hidden) {
-    rtdb.set(myRef, null);  // disparaît chez les autres immédiatement
-    pushAlert('👻 Position masquée — tu vois le convoi, personne ne te voit','info');
-  } else {
-    pushAlert('👁 Position visible à nouveau','success');
-  }
+  if (hidden) { rtdb.set(myRef, null); pushAlert('👻 Position masquée — tu vois le convoi, personne ne te voit','info'); }
+  else pushAlert('👁 Position visible à nouveau','success');
   $('#btn-toggle-hide').textContent = hidden ? '👁 Rendre ma position visible' : '👻 Cacher ma position';
   $('#menu-overlay').classList.add('hidden');
   render();
 };
-
 $('#btn-switch').onclick = () => {
   $('#menu-overlay').classList.add('hidden');
   const old = me.group;
-  leaveGroup(false);               // garde le nom en mémoire
-  showJoinOverlay(true);           // nom pré-rempli, code vide
+  leaveGroup(false);
+  showJoinOverlay(true);
   pushAlert(`🔁 Quitté ${old} — rejoins un autre convoi`,'info');
 };
-
 $('#btn-quit').onclick = () => {
   $('#menu-overlay').classList.add('hidden');
   const old = me.group;
-  leaveGroup(true);                // efface aussi le nom mémorisé
+  leaveGroup(true);
   showJoinOverlay(false);
   pushAlert(`🚪 Tu as quitté ${old}`,'warn');
 };
