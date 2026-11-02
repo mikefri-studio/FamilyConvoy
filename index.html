@@ -1,235 +1,271 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Family Convoy - Suivi des véhicules</title>
-
-    <!-- MapLibre GL JS -->
-    <script src="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.js"></script>
-    <link href="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.css" rel="stylesheet" />
-
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { 
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            overflow: hidden;
-        }
-        #map { 
-            position: absolute; 
-            top: 0; 
-            bottom: 0; 
-            width: 100%; 
-        }
-
-        /* Panneau d'information en bas */
-        .info-panel {
-            position: absolute;
-            bottom: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: white;
-            border-radius: 12px;
-            padding: 15px 20px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
-            min-width: 320px;
-            max-width: 90%;
-            z-index: 1000;
-        }
-
-        .vehicle-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 8px 0;
-            border-bottom: 1px solid #eee;
-        }
-        .vehicle-item:last-child { border-bottom: none; }
-        .vehicle-name { font-weight: 600; color: #333; }
-        .vehicle-distance { 
-            font-size: 14px; 
-            color: #666;
-            font-weight: 500;
-        }
-
-        .marker {
-            width: 30px;
-            height: 30px;
-            border-radius: 50%;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-weight: bold;
-            font-size: 14px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-        }
-
-        h2 { font-size: 16px; margin-bottom: 10px; color: #333; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#1a73e8">
+<title>Family Convoy 🚗</title>
+<script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
+<link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet"/>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;overflow:hidden}
+  #map{position:absolute;top:0;bottom:0;width:100%}
+  .topbar{position:absolute;top:10px;left:10px;right:60px;z-index:10;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .chip{background:#fff;border-radius:20px;padding:8px 14px;box-shadow:0 2px 10px rgba(0,0,0,.2);font-size:13px;font-weight:600}
+  .chip button{border:none;background:#1a73e8;color:#fff;border-radius:14px;padding:5px 10px;font-size:12px;margin-left:6px;cursor:pointer}
+  .panel{position:absolute;bottom:15px;left:50%;transform:translateX(-50%);background:#fff;border-radius:14px;padding:14px 18px;box-shadow:0 4px 20px rgba(0,0,0,.2);width:min(92%,380px);z-index:10;max-height:40vh;overflow-y:auto}
+  .panel h2{font-size:15px;margin-bottom:8px}
+  .row{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #eee;font-size:14px}
+  .row:last-child{border-bottom:none}
+  .row .d{color:#555;font-weight:600}
+  .old{opacity:.5}
+  .marker{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px;font-weight:bold;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.4);cursor:pointer}
+  .overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:50;display:flex;align-items:center;justify-content:center;padding:20px}
+  .card{background:#fff;border-radius:16px;padding:26px;width:min(100%,360px)}
+  .card h1{font-size:22px;margin-bottom:14px}
+  .card label{font-size:13px;font-weight:600;color:#444;display:block;margin:10px 0 4px}
+  .card input{width:100%;padding:11px;border:2px solid #ddd;border-radius:10px;font-size:15px}
+  .card button{width:100%;margin-top:16px;padding:13px;background:#1a73e8;color:#fff;border:none;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer}
+  .hint{font-size:12px;color:#777;margin-top:12px}
+  .hidden{display:none!important}
+</style>
 </head>
 <body>
-    <div id="map"></div>
 
-    <div class="info-panel">
-        <h2>🚗 Véhicules du convoi</h2>
-        <div id="vehicle-list">
-            <div class="vehicle-item">
-                <span class="vehicle-name">Chargement...</span>
-            </div>
-        </div>
-    </div>
+<div id="map"></div>
 
-    <script>
-        // ============================
-        // CONFIGURATION
-        // ============================
-        const MAPTILER_KEY = 'nJnYbbeBVl4T09PtkVVv';
-        const MAPTILER_STYLE_ID = '01a140ea-aca7-765a-b3b1-df5d0b2d41a4';
-        
-        // Position initiale (centre de la France, on la changera quand on aura du GPS)
-        const INITIAL_CENTER = [2.3522, 48.8566]; // Paris par défaut
+<div class="topbar">
+  <span class="chip" id="group-label">—</span>
+  <span class="chip"><button id="btn-share">📤 Inviter</button></span>
+  <span class="chip hidden" id="tesla-chip"><button id="btn-tesla">🔌 Connecter Tesla</button></span>
+  <span class="chip" id="status">📡 démarrage…</span>
+</div>
 
-        // ============================
-        // INITIALISATION DE LA CARTE
-        // ============================
-        const map = new maplibregl.Map({
-            container: 'map',
-            style: `https://api.maptiler.com/maps/${MAPTILER_STYLE_ID}/style.json?key=${MAPTILER_KEY}`,
-            center: INITIAL_CENTER,
-            zoom: 6,
-            attributionControl: true
-        });
+<div class="panel">
+  <h2>🚗 Convoi familial</h2>
+  <div id="list"><div class="row"><span>Chargement…</span></div></div>
+</div>
 
-        // Ajout des contrôles de navigation (zoom, boussole)
-        map.addControl(new maplibregl.NavigationControl(), 'top-right');
-        map.addControl(new maplibregl.GeolocateControl({
-            positionOptions: { enableHighAccuracy: true },
-            trackUserLocation: true
-        }));
+<div class="overlay hidden" id="overlay">
+  <div class="card">
+    <h1>🚗 Family Convoy</h1>
+    <label>Ton nom (ou nom de la voiture)</label>
+    <input id="inp-name" placeholder="Ex : Papa, Maman, Voiture 2…">
+    <label>Code du groupe</label>
+    <input id="inp-group" placeholder="Ex : NOEL2026">
+    <button id="btn-join">Rejoindre le convoi</button>
+    <p class="hint">Tous les membres doivent utiliser le MÊME code de groupe. La position reste privée : seul le groupe la voit.</p>
+  </div>
+</div>
 
-        // ============================
-        // DONNÉES SIMULÉES DES VÉHICULES
-        // (À remplacer par Firebase plus tard)
-        // ============================
-        const vehicles = [
-            {
-                id: 'v1',
-                name: '🚙 Papa',
-                color: '#4CAF50',
-                lat: 48.8566,
-                lng: 2.3522,
-                isMe: true
-            },
-            {
-                id: 'v2',
-                name: '🚗 Maman',
-                color: '#E91E63',
-                lat: 48.9000,
-                lng: 2.4500
-            },
-            {
-                id: 'v3',
-                name: '🚕 Frère',
-                color: '#FF9800',
-                lat: 48.8000,
-                lng: 2.3000
-            }
-        ];
+<script type="module">
+// ============================================================
+// ⚙️ CONFIGURATION — MODIFIE ICI
+// ============================================================
+const MAPTILER_KEY      = 'nJnYbbeBVl4T09PtkVVv';
+const MAPTILER_STYLE_ID = '01a140ea-aca7-765a-b3b1-df5d0b2d41a4';
 
-        // ============================
-        // FONCTIONS UTILITAIRES
-        // ============================
-        function calculateDistance(lat1, lng1, lat2, lng2) {
-            const R = 6371; // Rayon de la Terre en km
-            const dLat = (lat2 - lat1) * Math.PI / 180;
-            const dLng = (lng2 - lng1) * Math.PI / 180;
-            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-                      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-                      Math.sin(dLng/2) * Math.sin(dLng/2);
-            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-            return (R * c).toFixed(1);
-        }
+// Colle ici ta config Firebase (Partie 2). Laisse tel quel pour tester en MODE DÉMO.
+const FIREBASE_CONFIG = {
+  apiKey: "COLLE_ICI",
+  authDomain: "COLLE_ICI",
+  databaseURL: "COLLE_ICI",
+  projectId: "COLLE_ICI",
+  storageBucket: "COLLE_ICI",
+  messagingSenderId: "COLLE_ICI",
+  appId: "COLLE_ICI"
+};
 
-        function createMarkerHTML(vehicle) {
-            return `<div class="marker" style="background-color: ${vehicle.color};">${vehicle.name.split(' ')[0]}</div>`;
-        }
+// URL de ton Worker Cloudflare Tesla (Partie 4). Laisse vide pour commencer.
+const TESLA_WORKER_URL = "";
 
-        // ============================
-        // AFFICHAGE DES VÉHICULES SUR LA CARTE
-        // ============================
-        function renderVehicles() {
-            const myVehicle = vehicles.find(v => v.isMe);
-            if (!myVehicle) return;
+// ============================================================
+// État local
+// ============================================================
+const $ = s => document.querySelector(s);
+const deviceId = localStorage.getItem('fc_id') || (localStorage.setItem('fc_id', crypto.randomUUID()), localStorage.getItem('fc_id'));
+const me = {
+  id: deviceId,
+  name: localStorage.getItem('fc_name') || '',
+  group: localStorage.getItem('fc_group') || '',
+  lat: null, lng: null, speed: 0, battery: null
+};
+let members = {};          // membres Firebase
+let teslaCars = {};        // voitures Tesla (via Worker)
+const markers = {};        // marqueurs affichés
+let boundsDone = false;
+let phoneBattery = null;
 
-            // Nettoyer la liste
-            const listHTML = [];
+const PALETTE = ['#e53935','#8e24aa','#3949ab','#00897b','#f4511e','#6d4c41','#d81b60','#1e88e5'];
+const colorFor = id => PALETTE[[...id].reduce((a,c)=>a+c.charCodeAt(0),0) % PALETTE.length];
 
-            vehicles.forEach(vehicle => {
-                // Créer le marqueur
-                const markerHTML = createMarkerHTML(vehicle);
-                const el = document.createElement('div');
-                el.innerHTML = markerHTML;
+function haversineKm(lat1,lng1,lat2,lng2){
+  const R=6371, dLat=(lat2-lat1)*Math.PI/180, dLng=(lng2-lng1)*Math.PI/180;
+  const a=Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)**2;
+  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+}
+const ago = ts => { const s=Math.round((Date.now()-ts)/1000); return s<60?`il y a ${s}s`:`il y a ${Math.round(s/60)}min`; };
 
-                // Créer le popup
-                const popup = new maplibregl.Popup({ offset: 25 }).setHTML(
-                    `<strong>${vehicle.name}</strong><br>
-                    Position: ${vehicle.lat.toFixed(4)}, ${vehicle.lng.toFixed(4)}
-                    ${vehicle.isMe ? '<br><em>(C\'est vous)</em>' : ''}`
-                );
+// ============================================================
+// Carte MapTiler
+// ============================================================
+const map = new maplibregl.Map({
+  container:'map',
+  style:`https://api.maptiler.com/maps/${MAPTILER_STYLE_ID}/style.json?key=${MAPTILER_KEY}`,
+  center:[2.35,48.85], zoom:5
+});
+map.addControl(new maplibregl.NavigationControl(),'top-right');
 
-                new maplibregl.Marker({ element: el })
-                    .setLngLat([vehicle.lng, vehicle.lat])
-                    .setPopup(popup)
-                    .addTo(map);
+// ============================================================
+// Firebase (temps réel entre les téléphones)
+// ============================================================
+let db = null, myRef = null;
+const firebaseOK = !FIREBASE_CONFIG.apiKey.includes('COLLE');
+if (firebaseOK) {
+  const { initializeApp } = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js');
+  const rtdb = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js');
+  db = rtdb.getDatabase(initializeApp(FIREBASE_CONFIG));
+  window.__rtdb = rtdb;
+}
 
-                // Calculer la distance
-                const distance = calculateDistance(
-                    myVehicle.lat, myVehicle.lng,
-                    vehicle.lat, vehicle.lng
-                );
+// ============================================================
+// GPS réel du navigateur
+// ============================================================
+function startGPS(){
+  if (!navigator.geolocation){ $('#status').textContent='❌ GPS non supporté'; return; }
+  navigator.geolocation.watchPosition(p => {
+    me.lat = p.coords.latitude; me.lng = p.coords.longitude;
+    me.speed = Math.round((p.coords.speed||0)*3.6);
+    $('#status').textContent = ` GPS ok (±${Math.round(p.coords.accuracy)}m)`;
+  }, e => { $('#status').textContent = '📍 GPS refusé : autorise la position'; },
+  { enableHighAccuracy:true, maximumAge:2000, timeout:15000 });
+}
 
-                if (!vehicle.isMe) {
-                    listHTML.push(`
-                        <div class="vehicle-item">
-                            <span class="vehicle-name">${vehicle.name}</span>
-                            <span class="vehicle-distance">📍 ${distance} km</span>
-                        </div>
-                    `);
-                }
-            });
+// Batterie du téléphone (bonus)
+if (navigator.getBattery) navigator.getBattery().then(b => {
+  phoneBattery = Math.round(b.level*100);
+  b.addEventListener('levelchange', ()=> phoneBattery = Math.round(b.level*100));
+});
 
-            // Mettre à jour le panneau
-            document.getElementById('vehicle-list').innerHTML = listHTML.join('') || 
-                '<div class="vehicle-item"><span>Vous êtes seul dans le convoi</span></div>';
+// ============================================================
+// Envoi de MA position + écoute des autres
+// ============================================================
+function startSharing(){
+  if (!db) { startDemo(); return; }
+  const rtdb = window.__rtdb;
+  myRef = rtdb.ref(db, `convoy/${me.group}/members/${me.id}`);
+  rtdb.onDisconnect(myRef).remove();                       // disparaît si on ferme la page
+  rtdb.onValue(rtdb.ref(db, `convoy/${me.group}/members`), snap => {
+    members = snap.val() || {};
+    render();
+  });
+  setInterval(() => {                                      // envoi toutes les 5 s
+    if (me.lat == null) return;
+    rtdb.set(myRef, { name:me.name, lat:me.lat, lng:me.lng,
+      speed:me.speed, battery:phoneBattery, color:colorFor(me.id), updatedAt:Date.now() });
+  }, 5000);
+}
 
-            // Centrer la carte sur les véhicules
-            const bounds = new maplibregl.LngLatBounds();
-            vehicles.forEach(v => bounds.extend([v.lng, v.lat]));
-            map.fitBounds(bounds, { padding: 50, maxZoom: 12 });
-        }
+// Mode démo (sans Firebase) : 2 voitures fictives qui bougent
+function startDemo(){
+  $('#status').textContent = '🧪 MODE DÉMO (Firebase non configuré)';
+  members = {
+    demo1:{name:'Maman (démo)', lat:48.90, lng:2.45, speed:90, battery:77, color:'#8e24aa', updatedAt:Date.now()},
+    demo2:{name:'Frère (démo)', lat:48.80, lng:2.30, speed:110, battery:54, color:'#f4511e', updatedAt:Date.now()}
+  };
+  if (me.lat != null) members[me.id] = {name:me.name+' (toi)', lat:me.lat, lng:me.lng, speed:0, color:colorFor(me.id), updatedAt:Date.now()};
+  setInterval(()=>{
+    for (const k of ['demo1','demo2']){ members[k].lat += (Math.random()-.5)*.004; members[k].lng += (Math.random()-.5)*.004; members[k].updatedAt = Date.now(); }
+    if (me.lat != null) members[me.id] = {name:me.name+' (toi)', lat:me.lat, lng:me.lng, speed:me.speed, battery:phoneBattery, color:colorFor(me.id), updatedAt:Date.now()};
+    render();
+  }, 4000);
+  render();
+}
 
-        // ============================
-        // DÉMARRAGE
-        // ============================
-        map.on('load', () => {
-            console.log('✅ Carte MapTiler chargée');
-            renderVehicles();
-        });
+// ============================================================
+// Tesla (via Worker Cloudflare — Partie 4)
+// ============================================================
+if (TESLA_WORKER_URL) {
+  $('#tesla-chip').classList.remove('hidden');
+  $('#btn-tesla').onclick = () => window.open(TESLA_WORKER_URL + '/auth', '_blank');
+  const loadTesla = async () => {
+    try {
+      const cars = await (await fetch(TESLA_WORKER_URL + '/vehicles')).json();
+      if (cars.error) return;
+      teslaCars = {};
+      for (const c of cars) {
+        const d = await (await fetch(`${TESLA_WORKER_URL}/data?id=${c.id}`)).json();
+        if (!d.error) teslaCars['tesla_'+c.id] = {...d, name:'⚡ '+d.name};
+      }
+      render();
+    } catch(e){ console.warn('Tesla:', e); }
+  };
+  loadTesla(); setInterval(loadTesla, 60000);
+}
 
-        // Simulation de mise à jour toutes les 10 secondes
-        setInterval(() => {
-            vehicles.forEach(v => {
-                if (!v.isMe) {
-                    // Mouvement aléatoire très léger
-                    v.lat += (Math.random() - 0.5) * 0.001;
-                    v.lng += (Math.random() - 0.5) * 0.001;
-                }
-            });
-            renderVehicles();
-            console.log('🔄 Mise à jour des positions');
-        }, 10000);
-    </script>
+// ============================================================
+// Affichage carte + liste
+// ============================================================
+function render(){
+  const all = {...members, ...teslaCars};
+
+  for (const [id, v] of Object.entries(all)) {
+    if (v.lat == null) continue;
+    if (!markers[id]) {
+      const el = document.createElement('div');
+      el.className = 'marker';
+      el.style.background = v.color || '#7b1fa2';
+      el.textContent = (v.name||'?').replace(/[^\wà-ÿ]/gi,'').charAt(0).toUpperCase() || '🚗';
+      markers[id] = new maplibregl.Marker({element:el}).setLngLat([v.lng, v.lat]).addTo(map);
+    } else markers[id].setLngLat([v.lng, v.lat]);
+    markers[id].getElement().firstChild; // noop
+    markers[id].setPopup(new maplibregl.Popup({offset:25}).setHTML(
+      `<b>${v.name}</b><br>${v.speed?`🚀 ${v.speed} km/h<br>`:''}${v.battery!=null?`🔋 ${v.battery}%<br>`:''}${ago(v.updatedAt||Date.now())}`));
+  }
+  for (const id of Object.keys(markers)) if (!all[id] || all[id].lat==null){ markers[id].remove(); delete markers[id]; }
+
+  if (!boundsDone && Object.keys(all).length){
+    const b = new maplibregl.LngLatBounds();
+    Object.values(all).forEach(v => v.lat!=null && b.extend([v.lng, v.lat]));
+    map.fitBounds(b, {padding:60, maxZoom:12}); boundsDone = true;
+  }
+
+  const myEntry = all[me.id] || (me.lat!=null ? {lat:me.lat,lng:me.lng} : null);
+  let html = '';
+  for (const [id, v] of Object.entries(all)) {
+    const stale = v.updatedAt && Date.now()-v.updatedAt > 120000;
+    const dist = myEntry && id!==me.id ? `${haversineKm(myEntry.lat,myEntry.lng,v.lat,v.lng).toFixed(1)} km` : (id===me.id?'(toi)':'');
+    html += `<div class="row ${stale?'old':''}">
+      <span>${v.name||id} ${v.battery!=null?`🔋${v.battery}%`:''} ${stale?'⚠️':''}</span>
+      <span class="d">${dist} ${v.updatedAt?`· ${ago(v.updatedAt)}`:''}</span></div>`;
+  }
+  $('#list').innerHTML = html || '<div class="row"><span>Personne dans le convoi…</span></div>';
+}
+
+// ============================================================
+// Rejoindre / inviter
+// ============================================================
+function join(){
+  me.name = $('#inp-name').value.trim() || 'Voiture';
+  me.group = ($('#inp-group').value.trim() || 'FAMILLE').toUpperCase();
+  localStorage.setItem('fc_name', me.name);
+  localStorage.setItem('fc_group', me.group);
+  $('#overlay').classList.add('hidden');
+  $('#group-label').textContent = '👥 ' + me.group;
+  startGPS(); startSharing();
+}
+$('#btn-join').onclick = join;
+$('#btn-share').onclick = () => {
+  const link = `${location.origin}${location.pathname}?g=${me.group}`;
+  navigator.clipboard.writeText(link).then(()=> alert('Lien d\'invitation copié ! ✅\n\n' + link));
+};
+
+// Démarrage : lien d'invitation ?g=CODE ou groupe mémorisé
+const params = new URLSearchParams(location.search);
+if (params.get('g')) me.group = params.get('g').toUpperCase();
+if (me.name && me.group) { $('#inp-name').value = me.name; $('#inp-group').value = me.group; join(); }
+else { $('#overlay').classList.remove('hidden'); if (params.get('g')) $('#inp-group').value = params.get('g').toUpperCase(); }
+</script>
 </body>
 </html>
