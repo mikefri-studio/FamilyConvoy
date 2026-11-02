@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Family Convoy - Suivi des véhicules</title>
+
+    <!-- MapLibre GL JS -->
+    <script src="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.js"></script>
+    <link href="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.css" rel="stylesheet" />
+
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            overflow: hidden;
+        }
+        #map { 
+            position: absolute; 
+            top: 0; 
+            bottom: 0; 
+            width: 100%; 
+        }
+
+        /* Panneau d'information en bas */
+        .info-panel {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: white;
+            border-radius: 12px;
+            padding: 15px 20px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+            min-width: 320px;
+            max-width: 90%;
+            z-index: 1000;
+        }
+
+        .vehicle-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid #eee;
+        }
+        .vehicle-item:last-child { border-bottom: none; }
+        .vehicle-name { font-weight: 600; color: #333; }
+        .vehicle-distance { 
+            font-size: 14px; 
+            color: #666;
+            font-weight: 500;
+        }
+
+        .marker {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 14px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        }
+
+        h2 { font-size: 16px; margin-bottom: 10px; color: #333; }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+
+    <div class="info-panel">
+        <h2>🚗 Véhicules du convoi</h2>
+        <div id="vehicle-list">
+            <div class="vehicle-item">
+                <span class="vehicle-name">Chargement...</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ============================
+        // CONFIGURATION
+        // ============================
+        const MAPTILER_KEY = 'nJnYbbeBVl4T09PtkVVv';
+        const MAPTILER_STYLE_ID = '01a140ea-aca7-765a-b3b1-df5d0b2d41a4';
+        
+        // Position initiale (centre de la France, on la changera quand on aura du GPS)
+        const INITIAL_CENTER = [2.3522, 48.8566]; // Paris par défaut
+
+        // ============================
+        // INITIALISATION DE LA CARTE
+        // ============================
+        const map = new maplibregl.Map({
+            container: 'map',
+            style: `https://api.maptiler.com/maps/${MAPTILER_STYLE_ID}/style.json?key=${MAPTILER_KEY}`,
+            center: INITIAL_CENTER,
+            zoom: 6,
+            attributionControl: true
+        });
+
+        // Ajout des contrôles de navigation (zoom, boussole)
+        map.addControl(new maplibregl.NavigationControl(), 'top-right');
+        map.addControl(new maplibregl.GeolocateControl({
+            positionOptions: { enableHighAccuracy: true },
+            trackUserLocation: true
+        }));
+
+        // ============================
+        // DONNÉES SIMULÉES DES VÉHICULES
+        // (À remplacer par Firebase plus tard)
+        // ============================
+        const vehicles = [
+            {
+                id: 'v1',
+                name: '🚙 Papa',
+                color: '#4CAF50',
+                lat: 48.8566,
+                lng: 2.3522,
+                isMe: true
+            },
+            {
+                id: 'v2',
+                name: '🚗 Maman',
+                color: '#E91E63',
+                lat: 48.9000,
+                lng: 2.4500
+            },
+            {
+                id: 'v3',
+                name: '🚕 Frère',
+                color: '#FF9800',
+                lat: 48.8000,
+                lng: 2.3000
+            }
+        ];
+
+        // ============================
+        // FONCTIONS UTILITAIRES
+        // ============================
+        function calculateDistance(lat1, lng1, lat2, lng2) {
+            const R = 6371; // Rayon de la Terre en km
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLng = (lng2 - lng1) * Math.PI / 180;
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                      Math.sin(dLng/2) * Math.sin(dLng/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            return (R * c).toFixed(1);
+        }
+
+        function createMarkerHTML(vehicle) {
+            return `<div class="marker" style="background-color: ${vehicle.color};">${vehicle.name.split(' ')[0]}</div>`;
+        }
+
+        // ============================
+        // AFFICHAGE DES VÉHICULES SUR LA CARTE
+        // ============================
+        function renderVehicles() {
+            const myVehicle = vehicles.find(v => v.isMe);
+            if (!myVehicle) return;
+
+            // Nettoyer la liste
+            const listHTML = [];
+
+            vehicles.forEach(vehicle => {
+                // Créer le marqueur
+                const markerHTML = createMarkerHTML(vehicle);
+                const el = document.createElement('div');
+                el.innerHTML = markerHTML;
+
+                // Créer le popup
+                const popup = new maplibregl.Popup({ offset: 25 }).setHTML(
+                    `<strong>${vehicle.name}</strong><br>
+                    Position: ${vehicle.lat.toFixed(4)}, ${vehicle.lng.toFixed(4)}
+                    ${vehicle.isMe ? '<br><em>(C\'est vous)</em>' : ''}`
+                );
+
+                new maplibregl.Marker({ element: el })
+                    .setLngLat([vehicle.lng, vehicle.lat])
+                    .setPopup(popup)
+                    .addTo(map);
+
+                // Calculer la distance
+                const distance = calculateDistance(
+                    myVehicle.lat, myVehicle.lng,
+                    vehicle.lat, vehicle.lng
+                );
+
+                if (!vehicle.isMe) {
+                    listHTML.push(`
+                        <div class="vehicle-item">
+                            <span class="vehicle-name">${vehicle.name}</span>
+                            <span class="vehicle-distance">📍 ${distance} km</span>
+                        </div>
+                    `);
+                }
+            });
+
+            // Mettre à jour le panneau
+            document.getElementById('vehicle-list').innerHTML = listHTML.join('') || 
+                '<div class="vehicle-item"><span>Vous êtes seul dans le convoi</span></div>';
+
+            // Centrer la carte sur les véhicules
+            const bounds = new maplibregl.LngLatBounds();
+            vehicles.forEach(v => bounds.extend([v.lng, v.lat]));
+            map.fitBounds(bounds, { padding: 50, maxZoom: 12 });
+        }
+
+        // ============================
+        // DÉMARRAGE
+        // ============================
+        map.on('load', () => {
+            console.log('✅ Carte MapTiler chargée');
+            renderVehicles();
+        });
+
+        // Simulation de mise à jour toutes les 10 secondes
+        setInterval(() => {
+            vehicles.forEach(v => {
+                if (!v.isMe) {
+                    // Mouvement aléatoire très léger
+                    v.lat += (Math.random() - 0.5) * 0.001;
+                    v.lng += (Math.random() - 0.5) * 0.001;
+                }
+            });
+            renderVehicles();
+            console.log('🔄 Mise à jour des positions');
+        }, 10000);
+    </script>
+</body>
+</html>
