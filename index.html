@@ -8,6 +8,7 @@
 <link rel="manifest" href='data:application/manifest+json,{"name":"Family Convoy","short_name":"Convoy","start_url":".","display":"standalone","background_color":"%231a73e8","theme_color":"%231a73e8","description":"Suivi familial en convoi","icons":[{"src":"data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2220%22 fill=%22%231a73e8%22/><text x=%2250%22 y=%2268%22 font-size=%2260%22 text-anchor=%22middle%22>🚗</text></svg>","sizes":"192x192","type":"image/svg+xml"}]}'>
 <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
 <link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <style>
   *{margin:0;padding:0;box-sizing:border-box}
   body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;overflow:hidden;background:#000}
@@ -16,6 +17,7 @@
   .chip{background:#fff;border-radius:20px;padding:8px 14px;box-shadow:0 2px 10px rgba(0,0,0,.2);font-size:13px;font-weight:600;display:flex;align-items:center}
   .chip button{border:none;background:#1a73e8;color:#fff;border-radius:14px;padding:5px 10px;font-size:12px;margin-left:6px;cursor:pointer;font-weight:600}
   .chip.driver-btn{background:#ff9800;color:#fff;border:none;padding:8px 14px;border-radius:20px;font-weight:700;cursor:pointer}
+  .chip.menu-btn{background:#37474f;color:#fff;border:none;padding:8px 12px;border-radius:20px;font-weight:700;cursor:pointer}
   .panel{position:absolute;bottom:15px;left:50%;transform:translateX(-50%);background:#fff;border-radius:14px;padding:14px 18px;box-shadow:0 4px 20px rgba(0,0,0,.2);width:min(92%,380px);z-index:10;max-height:40vh;overflow-y:auto}
   .panel h2{font-size:15px;margin-bottom:8px}
   .row{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #eee;font-size:14px}
@@ -24,12 +26,15 @@
   .old{opacity:.5}
   .marker{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px;font-weight:bold;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.4);cursor:pointer}
   .marker.me{border:3px solid #ffeb3b;box-shadow:0 0 0 3px #1a73e8,0 2px 8px rgba(0,0,0,.4)}
+  .marker.ghost{opacity:.55;border-style:dashed}
   .overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:50;display:flex;align-items:center;justify-content:center;padding:20px}
   .card{background:#fff;border-radius:16px;padding:26px;width:min(100%,360px)}
   .card h1{font-size:22px;margin-bottom:14px}
   .card label{font-size:13px;font-weight:600;color:#444;display:block;margin:10px 0 4px}
   .card input{width:100%;padding:11px;border:2px solid #ddd;border-radius:10px;font-size:15px}
   .card button{width:100%;margin-top:16px;padding:13px;background:#1a73e8;color:#fff;border:none;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer}
+  .card button.secondary{background:#666;margin-top:8px}
+  .card button.danger{background:#e53935;margin-top:8px}
   .hint{font-size:12px;color:#777;margin-top:12px}
   .hidden{display:none!important}
   .alerts{position:absolute;top:60px;right:10px;z-index:15;display:flex;flex-direction:column;gap:8px;max-width:280px}
@@ -50,6 +55,8 @@
   .driver-grid .v{font-size:20px;font-weight:700}
   .driver-grid .l{font-size:11px;color:#999;text-transform:uppercase}
   .driver-exit{position:absolute;top:15px;right:15px;background:#ff5722;color:#fff;border:none;padding:10px 16px;border-radius:20px;font-weight:700;z-index:5;cursor:pointer}
+  #qr-box{display:flex;justify-content:center;margin:12px 0}
+  #qr-box img,#qr-box canvas{border-radius:8px}
 </style>
 </head>
 <body>
@@ -58,6 +65,7 @@
 
 <div class="topbar">
   <span class="chip" id="group-label">—</span>
+  <span class="chip"><button id="btn-menu" class="menu-btn">⚙️</button></span>
   <span class="chip"><button id="btn-share">📤 Inviter</button></span>
   <span class="chip"><button id="btn-driver" class="driver-btn">🚗 Conduite</button></span>
   <span class="chip hidden" id="tesla-chip"><button id="btn-tesla">⚡ Tesla</button></span>
@@ -87,6 +95,7 @@
   </div>
 </div>
 
+<!-- Overlay connexion -->
 <div class="overlay hidden" id="overlay">
   <div class="card">
     <h1>🚗 Family Convoy</h1>
@@ -95,7 +104,29 @@
     <label>Code du groupe</label>
     <input id="inp-group" placeholder="Ex : NOEL2026">
     <button id="btn-join">Rejoindre le convoi</button>
-    <p class="hint">📌 Tous les membres doivent utiliser le MÊME code. La position reste privée : seul le groupe la voit.</p>
+    <p class="hint">📌 Tape le code du groupe (ou scanne un QR code d'invitation). Chaque appareil ne le tape qu'UNE seule fois : ensuite c'est automatique.</p>
+  </div>
+</div>
+
+<!-- Overlay menu du convoi -->
+<div class="overlay hidden" id="menu-overlay">
+  <div class="card">
+    <h1>⚙️ Convoi : <span id="menu-group">—</span></h1>
+    <button id="btn-toggle-hide">👻 Cacher ma position</button>
+    <button id="btn-switch" class="secondary">🔁 Changer de convoi</button>
+    <button id="btn-quit" class="danger">🚪 Quitter le convoi</button>
+    <button id="btn-close-menu" class="secondary">Fermer</button>
+  </div>
+</div>
+
+<!-- Overlay invitation QR -->
+<div class="overlay hidden" id="share-overlay">
+  <div class="card" style="text-align:center">
+    <h1>📤 Inviter au convoi</h1>
+    <div id="qr-box"></div>
+    <p class="hint" id="share-link-text" style="word-break:break-all"></p>
+    <button id="btn-copy">📋 Copier le lien</button>
+    <button id="btn-close-share" class="secondary">Fermer</button>
   </div>
 </div>
 
@@ -126,8 +157,8 @@ const deviceId = localStorage.getItem('fc_id') || (localStorage.setItem('fc_id',
 const me = { id: deviceId, name:'', group:'', lat:null, lng:null, speed:0, battery:null, lastMoved:Date.now() };
 let members = {};
 let teslaCars = {};
-const markersMain = {};    // marqueurs carte principale
-const markersDriver = {};  // marqueurs carte mode conduite
+const markersMain = {};
+const markersDriver = {};
 const trails = {};
 const alertState = {};
 let boundsDone = false;
@@ -135,6 +166,9 @@ let phoneBattery = null;
 let driverMap = null;
 let driverMode = false;
 let followMe = true;
+let joined = false;   // suis-je dans un convoi ?
+let hidden = false;   // position masquée ?
+let myRef = null, membersRef = null, membersCb = null;
 
 const PALETTE = ['#e53935','#8e24aa','#3949ab','#00897b','#f4511e','#6d4c41','#d81b60','#1e88e5'];
 const colorFor = id => PALETTE[[...id].reduce((a,c)=>a+c.charCodeAt(0),0) % PALETTE.length];
@@ -178,7 +212,7 @@ map.on('load', () => {
 // ============================================================
 // Firebase
 // ============================================================
-let db = null, myRef = null;
+let db = null;
 const { initializeApp } = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js');
 const rtdb = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js');
 db = rtdb.getDatabase(initializeApp(FIREBASE_CONFIG));
@@ -193,7 +227,9 @@ function startGPS(){
     if (me.lat!=null && haversineKm(me.lat,me.lng,newLat,newLng)*1000 > 15) me.lastMoved = Date.now();
     me.lat = newLat; me.lng = newLng;
     me.speed = Math.round((p.coords.speed||0)*3.6);
-    $('#status').textContent = `📍 GPS (±${Math.round(p.coords.accuracy)}m, ${me.speed}km/h)`;
+    $('#status').textContent = joined
+      ? `${hidden?'👻':'📍'} GPS (±${Math.round(p.coords.accuracy)}m, ${me.speed}km/h)`
+      : '💤 hors convoi';
   }, e => { $('#status').textContent = '📍 GPS refusé'; pushAlert('⚠️ Autorise la géolocalisation','warn'); },
   { enableHighAccuracy:true, maximumAge:2000, timeout:15000 });
 }
@@ -204,7 +240,7 @@ if (navigator.getBattery) navigator.getBattery().then(b => {
 });
 
 // ============================================================
-// 🔋 Wake Lock : garder l'écran allumé
+// 🔋 Wake Lock : écran allumé
 // ============================================================
 let wakeLock = null;
 async function keepScreenOn(){
@@ -218,24 +254,56 @@ document.addEventListener('visibilitychange', () => {
 });
 
 // ============================================================
-// 📡 Partage + écoute temps réel
+// 📡 Rejoindre / partager / écouter
 // ============================================================
 function startSharing(){
+  joined = true;
+  hidden = false;
   myRef = rtdb.ref(db, `convoy/${me.group}/members/${me.id}`);
   rtdb.onDisconnect(myRef).remove();
-  rtdb.onValue(rtdb.ref(db, `convoy/${me.group}/members`), snap => {
-    members = snap.val() || {};
-    detectAlerts();
-    render();
+  membersRef = rtdb.ref(db, `convoy/${me.group}/members`);
+  membersCb = snap => { members = snap.val() || {}; detectAlerts(); render(); };
+  rtdb.onValue(membersRef, membersCb);
+}
+
+// Envoi de ma position (intervalle unique, créé une seule fois)
+setInterval(() => {
+  if (!joined || hidden || me.lat == null || !myRef) return;
+  rtdb.set(myRef, {
+    name:me.name, lat:me.lat, lng:me.lng,
+    speed:me.speed, battery:phoneBattery,
+    color:colorFor(me.id), updatedAt:Date.now()
   });
-  setInterval(() => {
-    if (me.lat == null) return;
-    rtdb.set(myRef, {
-      name:me.name, lat:me.lat, lng:me.lng,
-      speed:me.speed, battery:phoneBattery,
-      color:colorFor(me.id), updatedAt:Date.now()
-    });
-  }, 5000);
+}, 5000);
+
+// ============================================================
+// 🚪 Quitter / changer de convoi
+// ============================================================
+function leaveGroup(clearName=false){
+  if (myRef) rtdb.set(myRef, null);                 // supprime ma position chez les autres
+  if (membersRef && membersCb) rtdb.off(membersRef, membersCb);
+  joined = false; hidden = false;
+  members = {};
+  for (const k of Object.keys(trails)) delete trails[k];
+  for (const m of Object.values(markersMain)) m.remove();
+  for (const m of Object.values(markersDriver)) m.remove();
+  for (const k of Object.keys(markersMain)) delete markersMain[k];
+  for (const k of Object.keys(markersDriver)) delete markersDriver[k];
+  for (const k of Object.keys(alertState)) delete alertState[k];
+  localStorage.removeItem('fc_group');
+  if (clearName) localStorage.removeItem('fc_name');
+  boundsDone = false;
+  myRef = null; membersRef = null; membersCb = null;
+  me.group = '';
+  $('#group-label').textContent = '—';
+  $('#status').textContent = '💤 hors convoi';
+  render();
+}
+
+function showJoinOverlay(withName){
+  $('#overlay').classList.remove('hidden');
+  $('#inp-name').value = withName ? (localStorage.getItem('fc_name') || '') : '';
+  $('#inp-group').value = '';
 }
 
 // ============================================================
@@ -247,7 +315,6 @@ function detectAlerts(){
     if (!v.updatedAt || v.lat == null) continue;
     const fresh = Date.now() - v.updatedAt < 120000;
 
-    // Véhicule arrêté depuis +30s
     if (id !== me.id && fresh) {
       const stopped = (v.speed||0) < 5;
       const k = 'stop_'+id;
@@ -259,13 +326,11 @@ function detectAlerts(){
       else if (!stopped) { alertState[k]=null; alertState[k+'_fired']=false; }
     }
 
-    // Batterie faible
     if (v.battery != null && v.battery < 20) {
       const k = 'bat_'+id;
       if (!alertState[k]) { alertState[k]=true; pushAlert(`🔋 Batterie faible : ${v.name} (${v.battery}%)`,'warn'); }
     }
 
-    // Véhicule qui s'éloigne
     if (id !== me.id && fresh && myEntry) {
       const dist = haversineKm(myEntry.lat, myEntry.lng, v.lat, v.lng);
       const k = 'far_'+id;
@@ -273,7 +338,6 @@ function detectAlerts(){
       else if (dist < 15) alertState[k]=false;
     }
 
-    // Signal perdu
     if (!fresh) {
       const k = 'stale_'+id;
       if (!alertState[k]) { alertState[k]=true; pushAlert(`📵 ${v.name} : pas de signal depuis ${ago(v.updatedAt)}`,'warn',8000); }
@@ -303,23 +367,28 @@ if (TESLA_WORKER_URL) {
 }
 
 // ============================================================
-// 🎯 Fabrique un élément marqueur
+// 🎯 Marqueurs
 // ============================================================
 function makeMarkerEl(id, v){
   const el = document.createElement('div');
-  el.className = 'marker' + (id===me.id?' me':'');
+  el.className = 'marker' + (id===me.id?' me':'') + (hidden && id===me.id?' ghost':'');
   el.style.background = v.color || '#7b1fa2';
   el.textContent = (v.name||'?').replace(/[^\wà-ÿ]/gi,'').charAt(0).toUpperCase() || '🚗';
   return el;
 }
 
 // ============================================================
-// 🎨 Rendu (carte principale + carte conduite)
+// 🎨 Rendu
 // ============================================================
 function render(){
   const all = {...members, ...teslaCars};
 
-  // --- Marqueurs : carte principale ---
+  // Si je masque ma position : je me vois quand même moi (en fantôme)
+  if (joined && hidden && me.lat != null) {
+    all[me.id] = { name: me.name+' 👻', lat: me.lat, lng: me.lng, speed: me.speed,
+                   battery: phoneBattery, color: colorFor(me.id), updatedAt: Date.now() };
+  }
+
   for (const [id, v] of Object.entries(all)) {
     if (v.lat == null) continue;
     if (!markersMain[id]) {
@@ -332,7 +401,6 @@ function render(){
       `<b>${v.name}</b><br>${v.speed?`🚀 ${v.speed} km/h<br>`:''}${v.battery!=null?`🔋 ${v.battery}%<br>`:''}il y a ${ago(v.updatedAt||Date.now())}`));
   }
 
-  // --- Marqueurs : carte mode conduite ---
   if (driverMap) {
     for (const [id, v] of Object.entries(all)) {
       if (v.lat == null) continue;
@@ -345,11 +413,9 @@ function render(){
     }
   }
 
-  // --- Nettoyage : séparé pour chaque carte (PLUS DE BUG) ---
   for (const id of Object.keys(markersMain)) if (!all[id] || all[id].lat==null){ markersMain[id].remove(); delete markersMain[id]; }
   for (const id of Object.keys(markersDriver)) if (!all[id] || all[id].lat==null){ markersDriver[id].remove(); delete markersDriver[id]; }
 
-  // --- Traînées ---
   for (const [id, v] of Object.entries(all)) {
     if (v.lat == null) continue;
     if (!trails[id]) trails[id] = [];
@@ -370,19 +436,16 @@ function render(){
   if (map.getSource('trails')) map.getSource('trails').setData(trailFC);
   if (driverMap && driverMap.getSource('trails-d')) driverMap.getSource('trails-d').setData(trailFC);
 
-  // --- Cadrage initial ---
   if (!boundsDone && Object.keys(all).length){
     const b = new maplibregl.LngLatBounds();
     Object.values(all).forEach(v => v.lat!=null && b.extend([v.lng, v.lat]));
     map.fitBounds(b, {padding:60, maxZoom:12}); boundsDone = true;
   }
 
-  // --- Suivi automatique en mode conduite ---
   if (driverMode && followMe && me.lat!=null && driverMap) {
     driverMap.easeTo({ center:[me.lng, me.lat], zoom:15, duration:1500 });
   }
 
-  // --- Panneau liste ---
   const myEntry = all[me.id] || (me.lat!=null ? {lat:me.lat,lng:me.lng} : null);
   let html = '';
   const sorted = Object.entries(all).sort((a,b)=>{
@@ -398,7 +461,7 @@ function render(){
       <span>${v.name||id} ${v.battery!=null?`🔋${v.battery}%`:''} ${stale?'⚠️':''}</span>
       <span class="d">${dist} ${v.updatedAt?`· ${ago(v.updatedAt)}`:''}</span></div>`;
   }
-  $('#list').innerHTML = html || '<div class="row"><span>Personne…</span></div>';
+  $('#list').innerHTML = html || '<div class="row"><span>Personne dans le convoi…</span></div>';
 
   if (driverMode) updateDriverUI(all, myEntry);
 }
@@ -456,10 +519,10 @@ $('#btn-driver').onclick = enterDriverMode;
 $('#btn-exit-driver').onclick = exitDriverMode;
 
 // ============================================================
-// 📲 PWA Service Worker (offline)
+// 📲 PWA Service Worker
 // ============================================================
 const SW_CODE = `
-const CACHE = 'fc-v3';
+const CACHE = 'fc-v5';
 self.addEventListener('install', e => { self.skipWaiting(); });
 self.addEventListener('activate', e => { e.waitUntil(self.clients.claim()); });
 self.addEventListener('fetch', e => {
@@ -479,7 +542,7 @@ if ('serviceWorker' in navigator) {
 }
 
 // ============================================================
-// 🔐 Rejoindre / Inviter
+// 🔐 Rejoindre
 // ============================================================
 function join(){
   me.name = $('#inp-name').value.trim() || 'Voiture';
@@ -494,23 +557,78 @@ function join(){
   pushAlert(`✅ Rejoint le convoi ${me.group}`, 'success');
 }
 $('#btn-join').onclick = join;
+
+// ============================================================
+// ⚙️ Menu du convoi
+// ============================================================
+$('#btn-menu').onclick = () => {
+  $('#menu-group').textContent = me.group || '—';
+  $('#btn-toggle-hide').textContent = hidden ? '👁 Rendre ma position visible' : '👻 Cacher ma position';
+  $('#menu-overlay').classList.remove('hidden');
+};
+$('#btn-close-menu').onclick = () => $('#menu-overlay').classList.add('hidden');
+
+$('#btn-toggle-hide').onclick = () => {
+  if (!joined) { pushAlert('Rejoins d\'abord un convoi','info'); return; }
+  hidden = !hidden;
+  if (hidden) {
+    rtdb.set(myRef, null);  // disparaît chez les autres immédiatement
+    pushAlert('👻 Position masquée — tu vois le convoi, personne ne te voit','info');
+  } else {
+    pushAlert('👁 Position visible à nouveau','success');
+  }
+  $('#btn-toggle-hide').textContent = hidden ? '👁 Rendre ma position visible' : '👻 Cacher ma position';
+  $('#menu-overlay').classList.add('hidden');
+  render();
+};
+
+$('#btn-switch').onclick = () => {
+  $('#menu-overlay').classList.add('hidden');
+  const old = me.group;
+  leaveGroup(false);               // garde le nom en mémoire
+  showJoinOverlay(true);           // nom pré-rempli, code vide
+  pushAlert(`🔁 Quitté ${old} — rejoins un autre convoi`,'info');
+};
+
+$('#btn-quit').onclick = () => {
+  $('#menu-overlay').classList.add('hidden');
+  const old = me.group;
+  leaveGroup(true);                // efface aussi le nom mémorisé
+  showJoinOverlay(false);
+  pushAlert(`🚪 Tu as quitté ${old}`,'warn');
+};
+
+// ============================================================
+// 📤 Invitation QR
+// ============================================================
 $('#btn-share').onclick = () => {
+  if (!me.group) { pushAlert('Rejoins d\'abord un convoi','info'); return; }
+  const link = `${location.origin}${location.pathname}?g=${me.group}`;
+  $('#share-link-text').textContent = link;
+  $('#qr-box').innerHTML = '';
+  new QRCode($('#qr-box'), { text: link, width: 200, height: 200, correctLevel: QRCode.CorrectLevel.M });
+  $('#share-overlay').classList.remove('hidden');
+};
+$('#btn-copy').onclick = () => {
   const link = `${location.origin}${location.pathname}?g=${me.group}`;
   navigator.clipboard.writeText(link).then(()=> pushAlert('Lien copié ! 📋','info'));
 };
+$('#btn-close-share').onclick = () => $('#share-overlay').classList.add('hidden');
 
-// Auto-rejoint si déjà enregistré ou lien partagé
+// ============================================================
+// Démarrage
+// ============================================================
 const params = new URLSearchParams(location.search);
-if (params.get('g')) me.group = params.get('g').toUpperCase();
 const storedName = localStorage.getItem('fc_name');
 const storedGroup = localStorage.getItem('fc_group');
 if (storedName && storedGroup) {
-  me.name = storedName; me.group = storedGroup;
+  me.name = storedName; me.group = storedGroup.toUpperCase();
   $('#inp-name').value = me.name; $('#inp-group').value = me.group;
   join();
 } else {
   $('#overlay').classList.remove('hidden');
-  if (params.get('g')) $('#inp-group').value = params.get('g').toUpperCase();
+  $('#inp-name').value = storedName || '';
+  $('#inp-group').value = params.get('g') ? params.get('g').toUpperCase() : '';
 }
 </script>
 </body>
