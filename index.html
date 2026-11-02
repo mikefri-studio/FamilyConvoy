@@ -10,93 +10,150 @@
 <link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet"/>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <style>
-  *{margin:0;padding:0;box-sizing:border-box}
-  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;overflow:hidden;background:#000}
+  :root{
+    --glass:rgba(255,255,255,.86);
+    --glass-border:rgba(255,255,255,.65);
+    --card:#ffffff;
+    --text:#1c1e21;
+    --muted:#6b7280;
+    --accent:#1a73e8;
+    --shadow:0 8px 32px rgba(0,0,0,.16);
+  }
+  body.night{
+    --glass:rgba(21,24,31,.86);
+    --glass-border:rgba(255,255,255,.09);
+    --card:#171a21;
+    --text:#e8eaed;
+    --muted:#9aa0a6;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;overflow:hidden;background:#000;color:var(--text)}
   #map{position:absolute;top:0;bottom:0;width:100%}
-  .topbar{position:absolute;top:10px;left:10px;right:10px;z-index:10;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-  .chip{background:#fff;border-radius:20px;padding:8px 14px;box-shadow:0 2px 10px rgba(0,0,0,.2);font-size:13px;font-weight:600;display:flex;align-items:center}
-  .chip button{border:none;background:#1a73e8;color:#fff;border-radius:14px;padding:5px 10px;font-size:12px;margin-left:6px;cursor:pointer;font-weight:600}
-  .chip.driver-btn{background:#ff9800;color:#fff;border:none;padding:8px 14px;border-radius:20px;font-weight:700;cursor:pointer}
-  .chip.menu-btn{background:#37474f;color:#fff;border:none;padding:8px 12px;border-radius:20px;font-weight:700;cursor:pointer}
-  .chip.icon-btn{background:#fff;border:none;padding:8px 12px;border-radius:20px;font-size:15px;cursor:pointer}
-  .panel{position:absolute;bottom:15px;left:50%;transform:translateX(-50%);background:#fff;border-radius:14px;padding:14px 18px;box-shadow:0 4px 20px rgba(0,0,0,.2);width:min(92%,380px);z-index:10;max-height:40vh;overflow-y:auto}
-  .panel h2{font-size:15px;margin-bottom:8px}
-  .row{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #eee;font-size:14px}
+  .glass{background:var(--glass);backdrop-filter:blur(16px) saturate(1.5);-webkit-backdrop-filter:blur(16px) saturate(1.5);border:1px solid var(--glass-border);box-shadow:var(--shadow)}
+
+  /* ===== Header ===== */
+  .header{position:absolute;top:12px;left:12px;z-index:10;display:flex;flex-direction:column;gap:8px;align-items:flex-start;animation:fade .4s}
+  .pill{display:flex;align-items:center;gap:8px;padding:9px 15px;border-radius:20px;font-size:13px;font-weight:700;color:var(--text)}
+  .pill .dot{width:8px;height:8px;border-radius:50%;background:#34a853;box-shadow:0 0 8px #34a853;animation:blink 2s infinite}
+  @keyframes blink{0%,100%{opacity:1}50%{opacity:.4}}
+  @keyframes fade{from{opacity:0}to{opacity:1}}
+
+  /* ===== Alertes ===== */
+  .alerts{position:absolute;top:70px;left:50%;transform:translateX(-50%);z-index:15;display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none;width:min(92%,420px)}
+  .alert{background:rgba(18,20,26,.92);color:#fff;border-left:4px solid #ff7043;backdrop-filter:blur(10px);border-radius:14px;padding:11px 18px;font-size:13px;font-weight:600;box-shadow:0 8px 24px rgba(0,0,0,.35);animation:drop .3s}
+  .alert.warn{border-color:#ffb300}
+  .alert.info{border-color:#40c4ff}
+  .alert.success{border-color:#66bb6a}
+  @keyframes drop{from{opacity:0;transform:translateY(-14px)}to{opacity:1;transform:none}}
+
+  /* ===== Liste véhicules ===== */
+  .panel{position:absolute;bottom:164px;left:50%;transform:translateX(-50%);width:min(94%,400px);z-index:10;border-radius:22px;overflow:hidden;color:var(--text);animation:fade .4s}
+  .panel-head{display:flex;justify-content:space-between;align-items:center;padding:13px 18px;cursor:pointer;font-weight:800;font-size:14px;user-select:none}
+  .badge{background:var(--accent);color:#fff;border-radius:10px;padding:2px 9px;font-size:11px;margin-left:6px}
+  .chev{transition:transform .25s;color:var(--muted)}
+  .panel.collapsed .chev{transform:rotate(180deg)}
+  .panel-body{max-height:28vh;overflow-y:auto;padding:0 18px 12px;transition:max-height .25s ease,padding .25s ease}
+  .panel.collapsed .panel-body{max-height:0;padding-bottom:0;overflow:hidden}
+  .row{display:flex;align-items:center;gap:11px;padding:9px 0;border-bottom:1px solid var(--glass-border)}
   .row:last-child{border-bottom:none}
-  .row .d{color:#555;font-weight:600}
-  .old{opacity:.5}
-  .marker{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px;font-weight:bold;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.4);cursor:pointer}
-  .marker.me{border:3px solid #ffeb3b;box-shadow:0 0 0 3px #1a73e8,0 2px 8px rgba(0,0,0,.4)}
+  .row.old{opacity:.45}
+  .avatar{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:15px;flex:none;box-shadow:0 2px 8px rgba(0,0,0,.25)}
+  .who{flex:1;min-width:0}
+  .who .nm{font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .who .sub{font-size:11px;color:var(--muted);margin-top:1px}
+  .rt{text-align:right;flex:none}
+  .rt .dst{font-weight:800;font-size:13.5px}
+  .rt .tm{font-size:10px;color:var(--muted);margin-top:1px}
+
+  /* ===== Pilule mode conduite ===== */
+  .drive-pill{position:absolute;bottom:104px;left:50%;transform:translateX(-50%);z-index:11;padding:13px 26px;border:none;border-radius:18px;background:linear-gradient(135deg,#ffb74d,#fb8c00);color:#fff;font-weight:800;font-size:15px;letter-spacing:.02em;box-shadow:0 8px 24px rgba(251,140,0,.45);cursor:pointer;transition:transform .15s;animation:fade .4s}
+  .drive-pill:active{transform:translateX(-50%) scale(.95)}
+
+  /* ===== Dock ===== */
+  .dock{position:absolute;bottom:14px;left:50%;transform:translateX(-50%);z-index:12;display:flex;align-items:center;gap:2px;padding:8px 10px;border-radius:26px;animation:fade .4s}
+  .dock-btn{display:flex;flex-direction:column;align-items:center;gap:3px;border:none;background:transparent;color:var(--text);cursor:pointer;padding:7px 9px;border-radius:16px;transition:transform .12s,background .2s;min-width:54px}
+  .dock-btn:active{transform:scale(.9)}
+  .dock-btn .ico{font-size:21px;line-height:1}
+  .dock-btn .lbl{font-size:9px;font-weight:800;letter-spacing:.04em;color:var(--muted);text-transform:uppercase}
+  .dock-btn.active{background:rgba(26,115,232,.16)}
+  .dock-btn.active .lbl{color:var(--accent)}
+
+  /* ===== Radio FAB ===== */
+  #btn-radio{position:absolute;right:16px;bottom:110px;width:64px;height:64px;border-radius:50%;background:linear-gradient(145deg,#ff5252,#c62828);color:#fff;font-size:26px;border:4px solid var(--glass);box-shadow:0 8px 24px rgba(198,40,40,.5);z-index:12;cursor:pointer;touch-action:none;user-select:none;-webkit-user-select:none;transition:transform .15s}
+  #btn-radio:active{transform:scale(.94)}
+  #btn-radio.recording{animation:pulse 1s infinite;box-shadow:0 0 0 8px rgba(198,40,40,.3)}
+  @keyframes pulse{0%{transform:scale(1)}50%{transform:scale(1.1)}100%{transform:scale(1)}}
+
+  /* ===== Markers ===== */
+  .marker{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px;font-weight:800;border:3px solid #fff;box-shadow:0 3px 10px rgba(0,0,0,.45);cursor:pointer}
+  .marker.me{border:3px solid #ffeb3b;box-shadow:0 0 0 4px #1a73e8,0 3px 10px rgba(0,0,0,.45)}
   .marker.ghost{opacity:.55;border-style:dashed}
-  .overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:50;display:flex;align-items:center;justify-content:center;padding:20px}
-  .card{background:#fff;border-radius:16px;padding:26px;width:min(100%,360px)}
-  .card h1{font-size:22px;margin-bottom:14px}
-  .card label{font-size:13px;font-weight:600;color:#444;display:block;margin:10px 0 4px}
-  .card input{width:100%;padding:11px;border:2px solid #ddd;border-radius:10px;font-size:15px}
-  .card button{width:100%;margin-top:16px;padding:13px;background:#1a73e8;color:#fff;border:none;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer}
-  .card button.secondary{background:#666;margin-top:8px}
-  .card button.danger{background:#e53935;margin-top:8px}
-  .hint{font-size:12px;color:#777;margin-top:12px}
+
+  /* ===== Overlays ===== */
+  .overlay{position:fixed;inset:0;background:rgba(8,10,14,.62);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);z-index:50;display:flex;align-items:center;justify-content:center;padding:20px}
+  .card{background:var(--card);border-radius:26px;padding:28px;width:min(100%,380px);box-shadow:0 24px 64px rgba(0,0,0,.4);color:var(--text);animation:pop .25s}
+  @keyframes pop{from{opacity:0;transform:scale(.94)}to{opacity:1;transform:scale(1)}}
+  .card h1{font-size:23px;font-weight:800;margin-bottom:6px}
+  .hero{width:76px;height:76px;border-radius:24px;background:linear-gradient(135deg,#4285f4,#1a73e8);display:flex;align-items:center;justify-content:center;font-size:38px;margin:0 auto 16px;box-shadow:0 12px 28px rgba(26,115,232,.4)}
+  .card label{font-size:12px;font-weight:700;color:var(--muted);display:block;margin:14px 0 5px;text-transform:uppercase;letter-spacing:.05em}
+  .card input{width:100%;padding:13px 15px;border:2px solid transparent;border-radius:14px;background:rgba(127,127,127,.13);font-size:15px;font-weight:600;color:var(--text)}
+  .card input:focus{outline:none;border-color:var(--accent);background:transparent}
+  .card button{width:100%;margin-top:14px;padding:14px;border:none;border-radius:14px;font-size:15px;font-weight:800;cursor:pointer;transition:transform .12s}
+  .card button:active{transform:scale(.97)}
+  .btn-primary{background:linear-gradient(135deg,#4285f4,#1a73e8);color:#fff;box-shadow:0 8px 20px rgba(26,115,232,.35)}
+  .btn-ghost{background:rgba(127,127,127,.14);color:var(--text)}
+  .btn-danger{background:linear-gradient(135deg,#ef5350,#c62828);color:#fff;box-shadow:0 8px 20px rgba(198,40,40,.35)}
+  .hint{font-size:12px;color:var(--muted);margin-top:14px;line-height:1.5}
   .hidden{display:none!important}
-  .alerts{position:absolute;top:60px;right:10px;z-index:15;display:flex;flex-direction:column;gap:8px;max-width:280px}
-  .alert{background:#fff;border-left:5px solid #ff5722;padding:10px 14px;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,.2);font-size:13px;animation:slideIn .3s}
-  .alert.warn{border-color:#ff9800}
-  .alert.info{border-color:#2196f3}
-  .alert.success{border-color:#4caf50}
-  @keyframes slideIn{from{transform:translateX(120%);opacity:0}to{transform:translateX(0);opacity:1}}
-  /* Talkie-walkie */
-  #btn-radio{position:absolute;right:16px;bottom:16px;width:66px;height:66px;border-radius:50%;background:#e53935;color:#fff;font-size:28px;border:4px solid #fff;box-shadow:0 4px 14px rgba(0,0,0,.4);z-index:12;cursor:pointer;touch-action:none;user-select:none;-webkit-user-select:none}
-  #btn-radio.recording{background:#b71c1c;animation:pulse 1s infinite}
-  @keyframes pulse{0%{transform:scale(1)}50%{transform:scale(1.12)}100%{transform:scale(1)}}
-  /* Mode conduite */
-  body.driver .topbar,body.driver .panel{display:none}
-  .driver-ui{position:fixed;inset:0;background:#111;color:#fff;z-index:20;display:none;flex-direction:column;padding:20px}
+  #qr-box{display:flex;justify-content:center;margin:16px 0}
+  #qr-box img,#qr-box canvas{border-radius:12px;background:#fff;padding:8px}
+
+  /* ===== Mode conduite ===== */
+  body.driver .header,body.driver .panel,body.driver .dock,body.driver .drive-pill{display:none}
+  body.driver #btn-radio{bottom:24px;right:24px}
+  .driver-ui{position:fixed;inset:0;background:#0b0d10;color:#fff;z-index:20;display:none;flex-direction:column;padding:16px}
   body.driver .driver-ui{display:flex}
-  .driver-map{flex:1;border-radius:12px;overflow:hidden;position:relative}
-  .driver-info{background:#1a1a1a;border-radius:12px;padding:16px;margin-top:10px}
-  .driver-info .big{font-size:44px;font-weight:800;line-height:1}
-  .driver-info .sub{font-size:14px;color:#888;margin-top:4px}
-  .driver-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:12px}
-  .driver-grid div{background:#222;border-radius:8px;padding:10px}
-  .driver-grid .v{font-size:18px;font-weight:700}
-  .driver-grid .l{font-size:10px;color:#999;text-transform:uppercase}
-  .driver-exit{position:absolute;top:15px;right:15px;background:#ff5722;color:#fff;border:none;padding:10px 16px;border-radius:20px;font-weight:700;z-index:5;cursor:pointer}
-  #qr-box{display:flex;justify-content:center;margin:12px 0}
-  #qr-box img,#qr-box canvas{border-radius:8px}
-  /* 🌙 Mode nuit */
-  body.night{background:#000}
+  .driver-map{flex:1;border-radius:20px;overflow:hidden;position:relative}
+  .driver-info{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.09);border-radius:20px;padding:16px 18px;margin-top:12px;backdrop-filter:blur(10px)}
+  .driver-info .big{font-size:50px;font-weight:900;line-height:1;background:linear-gradient(90deg,#4fc3f7,#1a73e8);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+  .driver-info .sub{font-size:14px;color:#9aa0a6;margin-top:4px;font-weight:600}
+  .driver-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-top:14px}
+  .driver-grid div{background:rgba(255,255,255,.05);border-radius:12px;padding:10px}
+  .driver-grid .v{font-size:17px;font-weight:800}
+  .driver-grid .l{font-size:9.5px;color:#9aa0a6;text-transform:uppercase;letter-spacing:.05em;margin-top:2px}
+  .driver-exit{position:absolute;top:15px;right:15px;background:rgba(255,87,34,.92);color:#fff;border:none;padding:11px 18px;border-radius:20px;font-weight:800;z-index:5;cursor:pointer;backdrop-filter:blur(6px)}
+
+  /* ===== Nuit : carte ===== */
   body.night .maplibregl-canvas{filter:invert(1) hue-rotate(180deg) brightness(.9) saturate(.6)}
-  body.night .panel,body.night .chip,body.night .card,body.night .alert{background:#1e1e1e;color:#eee}
-  body.night .panel h2,body.night .row .d{color:#bbb}
-  body.night .row{border-color:#333}
-  body.night .card input{background:#2a2a2a;color:#eee;border-color:#444}
-  body.night .card label{color:#bbb}
-  body.night .hint{color:#999}
-  body.night .chip.icon-btn,body.night .chip.menu-btn{background:#333}
 </style>
 </head>
 <body>
 
 <div id="map"></div>
 
-<div class="topbar">
-  <span class="chip" id="group-label">—</span>
-  <span class="chip"><button id="btn-menu" class="menu-btn">⚙️</button></span>
-  <span class="chip"><button id="btn-share">📤 Inviter</button></span>
-  <span class="chip"><button id="btn-driver" class="driver-btn">🚗 Conduite</button></span>
-  <span class="chip"><button id="btn-radio-top" class="icon-btn hidden">️</button></span>
-  <span class="chip"><button id="btn-history" class="icon-btn">📊</button></span>
-  <span class="chip"><button id="btn-voice" class="icon-btn">🔊</button></span>
-  <span class="chip"><button id="btn-night" class="icon-btn">🌙</button></span>
-  <span class="chip hidden" id="tesla-chip"><button id="btn-tesla">⚡ Tesla</button></span>
-  <span class="chip" id="status">📡 démarrage…</span>
+<div class="header">
+  <span class="pill glass">👥 <b id="group-label">—</b></span>
+  <span class="pill glass"><span class="dot"></span><span id="status">démarrage…</span></span>
 </div>
 
 <div class="alerts" id="alerts"></div>
 
-<div class="panel">
-  <h2>🚗 Convoi familial</h2>
-  <div id="list"><div class="row"><span>Chargement…</span></div></div>
+<div class="panel glass" id="panel">
+  <div class="panel-head" id="panel-head">
+    <span>🚗 Convoi <span class="badge" id="convoy-count">0</span></span>
+    <span class="chev">▾</span>
+  </div>
+  <div class="panel-body" id="list"><div class="row"><span>Chargement…</span></div></div>
+</div>
+
+<button class="drive-pill" id="btn-driver">🚗 Mode conduite</button>
+
+<div class="dock glass">
+  <button class="dock-btn" id="btn-share"><span class="ico">📤</span><span class="lbl">Inviter</span></button>
+  <button class="dock-btn" id="btn-history"><span class="ico">📊</span><span class="lbl">Trajets</span></button>
+  <button class="dock-btn active" id="btn-voice"><span class="ico">🔊</span><span class="lbl">Voix</span></button>
+  <button class="dock-btn" id="btn-night"><span class="ico">🌙</span><span class="lbl">Nuit</span></button>
+  <button class="dock-btn" id="btn-menu"><span class="ico">⚙️</span><span class="lbl">Menu</span></button>
 </div>
 
 <button id="btn-radio" title="Maintiens pour parler">🎙️</button>
@@ -109,56 +166,58 @@
     <div class="big" id="d-next-dist">— km</div>
     <div class="sub" id="d-next-name">véhicule le plus proche</div>
     <div class="driver-grid">
-      <div><div class="v" id="d-my-speed">—</div><div class="l">Ma vitesse</div></div>
+      <div><div class="v" id="d-my-speed">—</div><div class="l">Vitesse</div></div>
       <div><div class="v" id="d-my-bat">—</div><div class="l">🔋 Tél.</div></div>
-      <div><div class="v" id="d-trip">0 km</div><div class="l">🛣️ Mon trajet</div></div>
+      <div><div class="v" id="d-trip">0 km</div><div class="l">🛣️ Trajet</div></div>
       <div><div class="v" id="d-count">0</div><div class="l">Véhicules</div></div>
       <div><div class="v" id="d-eta">—</div><div class="l">MAJ</div></div>
     </div>
   </div>
 </div>
 
-<!-- Overlay connexion -->
+<!-- Connexion -->
 <div class="overlay hidden" id="overlay">
   <div class="card">
-    <h1>🚗 Family Convoy</h1>
-    <label>Ton nom (ou de la voiture)</label>
+    <div class="hero">🚗</div>
+    <h1 style="text-align:center">Family Convoy</h1>
+    <label>Ton nom (ou ta voiture)</label>
     <input id="inp-name" placeholder="Ex : Papa, Maman, Voiture 2…">
     <label>Code du groupe</label>
     <input id="inp-group" placeholder="Ex : NOEL2026">
-    <button id="btn-join">Rejoindre le convoi</button>
-    <p class="hint">📌 Tape le code du groupe (ou scanne un QR code d'invitation). Une seule fois : ensuite c'est automatique.</p>
+    <button id="btn-join" class="btn-primary">Rejoindre le convoi</button>
+    <p class="hint" style="text-align:center">📌 Tape le code du groupe ou scanne un QR code d'invitation. Une seule fois : ensuite c'est automatique.</p>
   </div>
 </div>
 
-<!-- Overlay menu -->
+<!-- Menu -->
 <div class="overlay hidden" id="menu-overlay">
   <div class="card">
-    <h1>⚙️ Convoi : <span id="menu-group">—</span></h1>
-    <button id="btn-toggle-hide">👻 Cacher ma position</button>
-    <button id="btn-switch" class="secondary">🔁 Changer de convoi</button>
-    <button id="btn-quit" class="danger">🚪 Quitter le convoi</button>
-    <button id="btn-close-menu" class="secondary">Fermer</button>
+    <h1>⚙️ Convoi <span id="menu-group">—</span></h1>
+    <button id="btn-toggle-hide" class="btn-primary">👻 Cacher ma position</button>
+    <button id="btn-tesla" class="btn-ghost hidden">⚡ Connecter Tesla</button>
+    <button id="btn-switch" class="btn-ghost">🔁 Changer de convoi</button>
+    <button id="btn-quit" class="btn-danger">🚪 Quitter le convoi</button>
+    <button id="btn-close-menu" class="btn-ghost">Fermer</button>
   </div>
 </div>
 
-<!-- Overlay invitation QR -->
+<!-- Invitation QR -->
 <div class="overlay hidden" id="share-overlay">
   <div class="card" style="text-align:center">
-    <h1>📤 Inviter au convoi</h1>
+    <h1>📤 Inviter</h1>
     <div id="qr-box"></div>
-    <p class="hint" id="share-link-text" style="word-break:break-all"></p>
-    <button id="btn-copy">📋 Copier le lien</button>
-    <button id="btn-close-share" class="secondary">Fermer</button>
+    <p class="hint" id="share-link-text" style="word-break:break-all;text-align:center"></p>
+    <button id="btn-copy" class="btn-primary">📋 Copier le lien</button>
+    <button id="btn-close-share" class="btn-ghost">Fermer</button>
   </div>
 </div>
 
-<!-- Overlay historique -->
+<!-- Historique -->
 <div class="overlay hidden" id="history-overlay">
   <div class="card">
-    <h1>📊 Historique des trajets</h1>
-    <div id="history-list" style="max-height:50vh;overflow-y:auto"><div class="row"><span>Chargement…</span></div></div>
-    <button id="btn-close-history" class="secondary">Fermer</button>
+    <h1>📊 Mes trajets</h1>
+    <div id="history-list" style="max-height:48vh;overflow-y:auto;margin-top:10px"><div class="row"><span>Chargement…</span></div></div>
+    <button id="btn-close-history" class="btn-ghost">Fermer</button>
   </div>
 </div>
 
@@ -209,6 +268,7 @@ let trip = null;
 
 const PALETTE = ['#e53935','#8e24aa','#3949ab','#00897b','#f4511e','#6d4c41','#d81b60','#1e88e5'];
 const colorFor = id => PALETTE[[...id].reduce((a,c)=>a+c.charCodeAt(0),0) % PALETTE.length];
+const initialOf = n => (n||'?').replace(/[^\wà-ÿ]/gi,'').charAt(0).toUpperCase() || '🚗';
 
 function haversineKm(lat1,lng1,lat2,lng2){
   const R=6371, dLat=(lat2-lat1)*Math.PI/180, dLng=(lng2-lng1)*Math.PI/180;
@@ -224,7 +284,7 @@ function bearingDeg(lat1,lng1,lat2,lng2){
 const ago = ts => { const s=Math.round((Date.now()-ts)/1000); return s<60?`${s}s`:`${Math.round(s/60)}min`; };
 
 // ============================================================
-// 🗣️ Synthèse vocale
+// 🗣️ Voix
 // ============================================================
 function speak(txt){
   if (!voiceOn || !('speechSynthesis' in window)) return;
@@ -235,7 +295,8 @@ function speak(txt){
 }
 $('#btn-voice').onclick = () => {
   voiceOn = !voiceOn;
-  $('#btn-voice').textContent = voiceOn ? '🔊' : '🔇';
+  $('#btn-voice').querySelector('.ico').textContent = voiceOn ? '🔊' : '🔇';
+  $('#btn-voice').classList.toggle('active', voiceOn);
   if (voiceOn) speak('Voix activée');
 };
 function relativePos(v){
@@ -244,7 +305,6 @@ function relativePos(v){
   const diff = ((b - myHeading + 540) % 360) - 180;
   return Math.abs(diff) < 90 ? 'devant toi' : 'derrière toi';
 }
-// Annonce périodique (en conduite)
 setInterval(()=>{
   if (!joined || !voiceOn) return;
   if (!(driverMode || me.speed > 20)) return;
@@ -261,7 +321,7 @@ setInterval(()=>{
 }, 120000);
 
 // ============================================================
-// 🔔 Alertes (visuelles + vocales)
+// 🔔 Alertes
 // ============================================================
 function pushAlert(msg, type='warn', ttl=6000){
   const el = document.createElement('div');
@@ -274,11 +334,12 @@ function pushAlert(msg, type='warn', ttl=6000){
 }
 
 // ============================================================
-// 🌙 Mode nuit automatique
+// 🌙 Nuit
 // ============================================================
 function applyNight(on){
   document.body.classList.toggle('night', on);
-  $('#btn-night').textContent = on ? '☀️' : '🌙';
+  $('#btn-night').querySelector('.ico').textContent = on ? '☀️' : '🌙';
+  $('#btn-night').classList.toggle('active', on);
 }
 function autoNight(){
   if (nightManual !== null) return applyNight(nightManual);
@@ -292,7 +353,7 @@ $('#btn-night').onclick = () => {
 autoNight(); setInterval(autoNight, 60000);
 
 // ============================================================
-// 🗺️ Carte principale
+// 🗺️ Carte
 // ============================================================
 const map = new maplibregl.Map({
   container:'map',
@@ -318,7 +379,7 @@ db = rtdb.getDatabase(initializeApp(FIREBASE_CONFIG));
 // 📍 GPS
 // ============================================================
 function startGPS(){
-  if (!navigator.geolocation){ $('#status').textContent='❌ GPS non supporté'; return; }
+  if (!navigator.geolocation){ $('#status').textContent='GPS non supporté'; return; }
   navigator.geolocation.watchPosition(p => {
     const newLat=p.coords.latitude, newLng=p.coords.longitude;
     if (me.lat != null) {
@@ -329,9 +390,9 @@ function startGPS(){
     me.lat = newLat; me.lng = newLng;
     me.speed = Math.round((p.coords.speed||0)*3.6);
     $('#status').textContent = joined
-      ? `${hidden?'👻':''} GPS (±${Math.round(p.coords.accuracy)}m, ${me.speed}km/h)`
-      : '💤 hors convoi';
-  }, e => { $('#status').textContent = '📍 GPS refusé'; pushAlert('⚠️ Autorise la géolocalisation','warn'); },
+      ? `${hidden?'position masquée · ':''}±${Math.round(p.coords.accuracy)}m · ${me.speed} km/h`
+      : 'hors convoi';
+  }, e => { $('#status').textContent = 'GPS refusé'; pushAlert('⚠️ Autorise la géolocalisation','warn'); },
   { enableHighAccuracy:true, maximumAge:2000, timeout:15000 });
 }
 
@@ -345,16 +406,14 @@ if (navigator.getBattery) navigator.getBattery().then(b => {
 // ============================================================
 let wakeLock = null;
 async function keepScreenOn(){
-  try {
-    wakeLock = await navigator.wakeLock.request('screen');
-  } catch(e){}
+  try { wakeLock = await navigator.wakeLock.request('screen'); } catch(e){}
 }
 document.addEventListener('visibilitychange', () => {
   if (wakeLock !== null && document.visibilityState === 'visible') keepScreenOn();
 });
 
 // ============================================================
-// 📡 Rejoindre / partager / écouter
+// 📡 Partage
 // ============================================================
 function startSharing(){
   joined = true;
@@ -364,7 +423,6 @@ function startSharing(){
   membersRef = rtdb.ref(db, `convoy/${me.group}/members`);
   membersCb = snap => { members = snap.val() || {}; detectAlerts(); render(); };
   rtdb.onValue(membersRef, membersCb);
-  // ️ Radio du convoi
   radioRef = rtdb.ref(db, `convoy/${me.group}/radio`);
   radioCb = snap => {
     const m = snap.val();
@@ -386,7 +444,7 @@ setInterval(() => {
 }, 5000);
 
 // ============================================================
-// 🚪 Quitter / changer
+// 🚪 Quitter
 // ============================================================
 function leaveGroup(clearName=false){
   endTrip();
@@ -407,7 +465,7 @@ function leaveGroup(clearName=false){
   myRef = null; membersRef = null; membersCb = null; radioRef = null; radioCb = null;
   me.group = '';
   $('#group-label').textContent = '—';
-  $('#status').textContent = '💤 hors convoi';
+  $('#status').textContent = 'hors convoi';
   render();
 }
 function showJoinOverlay(withName){
@@ -452,7 +510,7 @@ function detectAlerts(){
 }
 
 // ============================================================
-// 🛣️ Itinéraire réel (OSRM, gratuit sans clé)
+// 🛣️ Itinéraires
 // ============================================================
 async function updateRoutes(){
   if (!joined || me.lat == null) return;
@@ -472,12 +530,12 @@ async function updateRoutes(){
 setInterval(updateRoutes, 30000);
 
 // ============================================================
-// 📊 Historique des trajets
+// 📊 Historique
 // ============================================================
 function tripTick(){
   if (!joined || me.lat == null) return;
   const now = Date.now();
-  if (!trip) trip = { id:`${now}`, start:now, last:now, dist:0, lastLat:me.lat, lastLng:me.lng, points:[[me.lng, me.lat]] };
+  if (!trip) trip = { id:`${now}`, start:now, dist:0, lastLat:me.lat, lastLng:me.lng, points:[[me.lng, me.lat]], lastMove:now };
   const d = haversineKm(trip.lastLat, trip.lastLng, me.lat, me.lng);
   if (d*1000 > 60) {
     trip.dist += d;
@@ -486,9 +544,8 @@ function tripTick(){
     trip.lastLat = me.lat; trip.lastLng = me.lng;
     trip.lastMove = now;
   }
-  trip.last = now;
   $('#d-trip').textContent = `${trip.dist.toFixed(1)} km`;
-  if (trip.dist > 0.3 && now - (trip.lastMove||trip.start) > 15*60000) endTrip();
+  if (trip.dist > 0.3 && now - trip.lastMove > 15*60000) endTrip();
 }
 setInterval(tripTick, 10000);
 
@@ -526,7 +583,10 @@ $('#btn-history').onclick = async () => {
   items.sort((a,b)=>b.start-a.start);
   items = items.slice(0,15);
   listEl.innerHTML = items.length ? items.map(i=>
-    `<div class="row"><span>🗓️ ${new Date(i.start).toLocaleDateString('fr-FR')} — ${i.name||'?'}</span><span class="d">${i.km} km · ${i.min} min</span></div>`
+    `<div class="row"><div class="avatar" style="background:var(--accent)">🗓️</div>
+     <div class="who"><div class="nm">${new Date(i.start).toLocaleDateString('fr-FR')} — ${i.name||'?'}</div>
+     <div class="sub">${i.min} min de trajet</div></div>
+     <div class="rt"><div class="dst">${i.km} km</div></div></div>`
   ).join('') : '<div class="row"><span>Aucun trajet enregistré pour l\'instant</span></div>';
 };
 $('#btn-close-history').onclick = () => $('#history-overlay').classList.add('hidden');
@@ -576,7 +636,7 @@ btnRadio.addEventListener('pointerdown', async e => {
 // ⚡ Tesla
 // ============================================================
 if (TESLA_WORKER_URL) {
-  $('#tesla-chip').classList.remove('hidden');
+  $('#btn-tesla').classList.remove('hidden');
   $('#btn-tesla').onclick = () => window.open(TESLA_WORKER_URL + '/auth', '_blank');
   const loadTesla = async () => {
     try {
@@ -600,7 +660,7 @@ function makeMarkerEl(id, v){
   const el = document.createElement('div');
   el.className = 'marker' + (id===me.id?' me':'') + (hidden && id===me.id?' ghost':'');
   el.style.background = v.color || '#7b1fa2';
-  el.textContent = (v.name||'?').replace(/[^\wà-ÿ]/gi,'').charAt(0).toUpperCase() || '🚗';
+  el.textContent = initialOf(v.name);
   return el;
 }
 
@@ -613,6 +673,7 @@ function render(){
     all[me.id] = { name: me.name+' 👻', lat: me.lat, lng: me.lng, speed: me.speed,
                    battery: phoneBattery, color: colorFor(me.id), updatedAt: Date.now() };
   }
+  $('#convoy-count').textContent = Object.keys(all).length;
 
   for (const [id, v] of Object.entries(all)) {
     if (v.lat == null) continue;
@@ -674,22 +735,31 @@ function render(){
   });
   for (const [id, v] of sorted) {
     const stale = v.updatedAt && Date.now()-v.updatedAt > 120000;
-    let distTxt;
+    let distTxt, tmTxt = v.updatedAt ? ago(v.updatedAt) : '';
     if (id === me.id) distTxt = '(toi)';
     else {
       const rc = routeCache[id];
       distTxt = (rc && Date.now()-rc.ts < 90000)
-        ? `🛣️ ${rc.km.toFixed(1)} km · ${rc.min} min`
-        : `${haversineKm(myEntry.lat,myEntry.lng,v.lat,v.lng).toFixed(1)} km`;
+        ? `${rc.km.toFixed(1)} km · ${rc.min} min`
+        : `${myEntry ? haversineKm(myEntry.lat,myEntry.lng,v.lat,v.lng).toFixed(1) : '?'} km`;
     }
     html += `<div class="row ${stale?'old':''}">
-      <span>${v.name||id} ${v.battery!=null?`🔋${v.battery}%`:''} ${stale?'⚠️':''}</span>
-      <span class="d">${distTxt} ${v.updatedAt?`· ${ago(v.updatedAt)}`:''}</span></div>`;
+      <div class="avatar" style="background:${v.color||'#888'}">${initialOf(v.name)}</div>
+      <div class="who">
+        <div class="nm">${v.name||id}</div>
+        <div class="sub">${v.speed?`🚀 ${v.speed} km/h · `:''}${v.battery!=null?`🔋 ${v.battery}%`:'en attente…'}</div>
+      </div>
+      <div class="rt"><div class="dst">${distTxt}</div><div class="tm">${tmTxt}</div></div>
+    </div>`;
   }
   $('#list').innerHTML = html || '<div class="row"><span>Personne dans le convoi…</span></div>';
 
   if (driverMode) updateDriverUI(all, myEntry);
 }
+
+// Replier / déplier la liste
+$('#panel-head').onclick = () => $('#panel').classList.toggle('collapsed');
+if (window.innerHeight < 640) $('#panel').classList.add('collapsed');
 
 // ============================================================
 // 🚗 Mode conducteur
@@ -743,7 +813,7 @@ $('#btn-exit-driver').onclick = exitDriverMode;
 // 📲 PWA
 // ============================================================
 const SW_CODE = `
-const CACHE = 'fc-v6';
+const CACHE = 'fc-v7';
 self.addEventListener('install', e => { self.skipWaiting(); });
 self.addEventListener('activate', e => { e.waitUntil(self.clients.claim()); });
 self.addEventListener('fetch', e => {
@@ -771,7 +841,7 @@ function join(){
   localStorage.setItem('fc_name', me.name);
   localStorage.setItem('fc_group', me.group);
   $('#overlay').classList.add('hidden');
-  $('#group-label').textContent = '👥 ' + me.group;
+  $('#group-label').textContent = me.group;
   startGPS();
   startSharing();
   keepScreenOn();
@@ -814,7 +884,7 @@ $('#btn-quit').onclick = () => {
 };
 
 // ============================================================
-// 📤 Invitation QR
+// 📤 QR
 // ============================================================
 $('#btn-share').onclick = () => {
   if (!me.group) { pushAlert('Rejoins d\'abord un convoi','info'); return; }
