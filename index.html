@@ -61,23 +61,21 @@
 
 <script type="module">
 // ============================================================
-// ⚙️ CONFIGURATION — MODIFIE ICI
+// ⚙️ CONFIGURATION
 // ============================================================
 const MAPTILER_KEY      = 'nJnYbbeBVl4T09PtkVVv';
 const MAPTILER_STYLE_ID = '01a140ea-aca7-765a-b3b1-df5d0b2d41a4';
 
-// Colle ici ta config Firebase (Partie 2). Laisse tel quel pour tester en MODE DÉMO.
 const FIREBASE_CONFIG = {
-  apiKey: "COLLE_ICI",
-  authDomain: "COLLE_ICI",
-  databaseURL: "COLLE_ICI",
-  projectId: "COLLE_ICI",
-  storageBucket: "COLLE_ICI",
-  messagingSenderId: "COLLE_ICI",
-  appId: "COLLE_ICI"
+  apiKey: "AIzaSyBLikY235Wr8capctDYiMEnt6AZflbShfs",
+  authDomain: "family-convoy-c1b34.firebaseapp.com",
+  databaseURL: "https://family-convoy-c1b34-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "family-convoy-c1b34",
+  storageBucket: "family-convoy-c1b34.firebasestorage.app",
+  messagingSenderId: "378869564440",
+  appId: "1:378869564440:web:2c286789be6e783c99af6d"
 };
 
-// URL de ton Worker Cloudflare Tesla (Partie 4). Laisse vide pour commencer.
 const TESLA_WORKER_URL = "";
 
 // ============================================================
@@ -91,9 +89,9 @@ const me = {
   group: localStorage.getItem('fc_group') || '',
   lat: null, lng: null, speed: 0, battery: null
 };
-let members = {};          // membres Firebase
-let teslaCars = {};        // voitures Tesla (via Worker)
-const markers = {};        // marqueurs affichés
+let members = {};
+let teslaCars = {};
+const markers = {};
 let boundsDone = false;
 let phoneBattery = null;
 
@@ -118,10 +116,10 @@ const map = new maplibregl.Map({
 map.addControl(new maplibregl.NavigationControl(),'top-right');
 
 // ============================================================
-// Firebase (temps réel entre les téléphones)
+// Firebase
 // ============================================================
 let db = null, myRef = null;
-const firebaseOK = !FIREBASE_CONFIG.apiKey.includes('COLLE');
+const firebaseOK = !!FIREBASE_CONFIG.apiKey;
 if (firebaseOK) {
   const { initializeApp } = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js');
   const rtdb = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js');
@@ -130,49 +128,47 @@ if (firebaseOK) {
 }
 
 // ============================================================
-// GPS réel du navigateur
+// GPS réel
 // ============================================================
 function startGPS(){
   if (!navigator.geolocation){ $('#status').textContent='❌ GPS non supporté'; return; }
   navigator.geolocation.watchPosition(p => {
     me.lat = p.coords.latitude; me.lng = p.coords.longitude;
     me.speed = Math.round((p.coords.speed||0)*3.6);
-    $('#status').textContent = ` GPS ok (±${Math.round(p.coords.accuracy)}m)`;
-  }, e => { $('#status').textContent = '📍 GPS refusé : autorise la position'; },
+    $('#status').textContent = `📍 GPS ok (±${Math.round(p.coords.accuracy)}m)`;
+  }, e => { $('#status').textContent = '📍 GPS refusé'; },
   { enableHighAccuracy:true, maximumAge:2000, timeout:15000 });
 }
 
-// Batterie du téléphone (bonus)
 if (navigator.getBattery) navigator.getBattery().then(b => {
   phoneBattery = Math.round(b.level*100);
   b.addEventListener('levelchange', ()=> phoneBattery = Math.round(b.level*100));
 });
 
 // ============================================================
-// Envoi de MA position + écoute des autres
+// Partage de position
 // ============================================================
 function startSharing(){
   if (!db) { startDemo(); return; }
   const rtdb = window.__rtdb;
   myRef = rtdb.ref(db, `convoy/${me.group}/members/${me.id}`);
-  rtdb.onDisconnect(myRef).remove();                       // disparaît si on ferme la page
+  rtdb.onDisconnect(myRef).remove();
   rtdb.onValue(rtdb.ref(db, `convoy/${me.group}/members`), snap => {
     members = snap.val() || {};
     render();
   });
-  setInterval(() => {                                      // envoi toutes les 5 s
+  setInterval(() => {
     if (me.lat == null) return;
     rtdb.set(myRef, { name:me.name, lat:me.lat, lng:me.lng,
       speed:me.speed, battery:phoneBattery, color:colorFor(me.id), updatedAt:Date.now() });
   }, 5000);
 }
 
-// Mode démo (sans Firebase) : 2 voitures fictives qui bougent
 function startDemo(){
-  $('#status').textContent = '🧪 MODE DÉMO (Firebase non configuré)';
+  $('#status').textContent = '🧪 MODE DÉMO';
   members = {
-    demo1:{name:'Maman (démo)', lat:48.90, lng:2.45, speed:90, battery:77, color:'#8e24aa', updatedAt:Date.now()},
-    demo2:{name:'Frère (démo)', lat:48.80, lng:2.30, speed:110, battery:54, color:'#f4511e', updatedAt:Date.now()}
+    demo1:{name:'Maman', lat:48.90, lng:2.45, speed:90, battery:77, color:'#8e24aa', updatedAt:Date.now()},
+    demo2:{name:'Frère', lat:48.80, lng:2.30, speed:110, battery:54, color:'#f4511e', updatedAt:Date.now()}
   };
   if (me.lat != null) members[me.id] = {name:me.name+' (toi)', lat:me.lat, lng:me.lng, speed:0, color:colorFor(me.id), updatedAt:Date.now()};
   setInterval(()=>{
@@ -184,7 +180,7 @@ function startDemo(){
 }
 
 // ============================================================
-// Tesla (via Worker Cloudflare — Partie 4)
+// Tesla
 // ============================================================
 if (TESLA_WORKER_URL) {
   $('#tesla-chip').classList.remove('hidden');
@@ -205,7 +201,7 @@ if (TESLA_WORKER_URL) {
 }
 
 // ============================================================
-// Affichage carte + liste
+// Affichage
 // ============================================================
 function render(){
   const all = {...members, ...teslaCars};
@@ -219,7 +215,6 @@ function render(){
       el.textContent = (v.name||'?').replace(/[^\wà-ÿ]/gi,'').charAt(0).toUpperCase() || '🚗';
       markers[id] = new maplibregl.Marker({element:el}).setLngLat([v.lng, v.lat]).addTo(map);
     } else markers[id].setLngLat([v.lng, v.lat]);
-    markers[id].getElement().firstChild; // noop
     markers[id].setPopup(new maplibregl.Popup({offset:25}).setHTML(
       `<b>${v.name}</b><br>${v.speed?`🚀 ${v.speed} km/h<br>`:''}${v.battery!=null?`🔋 ${v.battery}%<br>`:''}${ago(v.updatedAt||Date.now())}`));
   }
@@ -244,7 +239,7 @@ function render(){
 }
 
 // ============================================================
-// Rejoindre / inviter
+// UI
 // ============================================================
 function join(){
   me.name = $('#inp-name').value.trim() || 'Voiture';
@@ -258,10 +253,9 @@ function join(){
 $('#btn-join').onclick = join;
 $('#btn-share').onclick = () => {
   const link = `${location.origin}${location.pathname}?g=${me.group}`;
-  navigator.clipboard.writeText(link).then(()=> alert('Lien d\'invitation copié ! ✅\n\n' + link));
+  navigator.clipboard.writeText(link).then(()=> alert('Lien copié ! ✅\n\n' + link));
 };
 
-// Démarrage : lien d'invitation ?g=CODE ou groupe mémorisé
 const params = new URLSearchParams(location.search);
 if (params.get('g')) me.group = params.get('g').toUpperCase();
 if (me.name && me.group) { $('#inp-name').value = me.name; $('#inp-group').value = me.group; join(); }
