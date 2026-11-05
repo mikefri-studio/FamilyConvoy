@@ -909,7 +909,7 @@ function render(){
     const subParts = [];
     if (v.devCount > 1) subParts.push(`📱×${v.devCount}`);
     if (id === me.id && me.role === 'screen') subParts.push('📺 écran');
-    if (v.speed) subParts.push(`🚀 ${v.speed} km/h`;
+    if (v.speed) subParts.push(`🚀 ${v.speed} km/h`);
     if (v.battery != null) subParts.push(`🔋 ${v.battery}%`);
     html += `<div class="row ${stale?'old':''} ${id===followId?'followed':''}" data-id="${id}">
       <div class="avatar" style="background:${v.color||'#888'}">${initialOf(v.name)}</div>
