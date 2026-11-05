@@ -85,6 +85,14 @@
   #btn-radio.recording{animation:pulse 1s infinite;box-shadow:0 0 0 8px rgba(198,40,40,.3)}
   @keyframes pulse{0%{transform:scale(1)}50%{transform:scale(1.1)}100%{transform:scale(1)}}
 
+  /* ===== Sélecteur style de carte ===== */
+  .map-switcher{position:absolute;top:12px;right:12px;z-index:11;display:flex;gap:6px;padding:6px;border-radius:16px}
+  .map-switcher .sw-btn{width:42px;height:42px;border-radius:12px;border:2px solid transparent;cursor:pointer;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.25);transition:all .2s;background:#1a1a1a;padding:0}
+  .map-switcher .sw-btn:hover{transform:scale(1.08)}
+  .map-switcher .sw-btn.active{border-color:#fff;box-shadow:0 0 0 2px var(--accent)}
+  .map-switcher .sw-btn img{width:100%;height:100%;object-fit:cover;display:block}
+  body.driver .map-switcher{display:none}
+
   /* ===== Markers ===== */
   .marker{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px;font-weight:800;border:3px solid #fff;box-shadow:0 3px 10px rgba(0,0,0,.45);cursor:pointer}
   .marker.me{border:3px solid #ffeb3b;box-shadow:0 0 0 4px #1a73e8,0 3px 10px rgba(0,0,0,.45)}
@@ -173,6 +181,18 @@
 
 <button id="btn-radio" title="Maintiens pour parler">🎙️</button>
 
+<div class="map-switcher glass">
+  <button class="sw-btn" data-style="standard" title="Carte standard">
+    <img src="https://api.maptiler.com/maps/streets-v2-light/0/0/0.png?key=nJnYbbeBVl4T09PtkVVv" alt="Standard">
+  </button>
+  <button class="sw-btn" data-style="satellite" title="Vue satellite">
+    <img src="https://api.maptiler.com/maps/satellite/0/0/0.png?key=nJnYbbeBVl4T09PtkVVv" alt="Satellite">
+  </button>
+  <button class="sw-btn" data-style="hybrid" title="Satellite + noms">
+    <img src="https://api.maptiler.com/maps/hybrid/0/0/0.png?key=nJnYbbeBVl4T09PtkVVv" alt="Hybride">
+  </button>
+</div>
+
 <div class="driver-ui">
   <div class="driver-map" id="driver-map">
     <button class="driver-center" id="btn-center-me">📍 Moi</button>
@@ -259,9 +279,14 @@
 // ============================================================
 // CONFIG
 // ============================================================
-const MAPTILER_KEY      = 'nJnYbbeBVl4T09PtkVVv';
-const MAPTILER_STYLE_ID = '01a140ea-aca7-765a-b3b1-df5d0b2d41a4';
-const MAP_STYLE = `https://api.maptiler.com/maps/${MAPTILER_STYLE_ID}/style.json?key=${MAPTILER_KEY}`;
+const MAPTILER_KEY = 'nJnYbbeBVl4T09PtkVVv';
+const MAP_STYLES = {
+  standard: `https://api.maptiler.com/maps/streets-v2-light/style.json?key=${MAPTILER_KEY}`,
+  satellite:`https://api.maptiler.com/maps/satellite/style.json?key=${MAPTILER_KEY}`,
+  hybrid:   `https://api.maptiler.com/maps/hybrid/style.json?key=${MAPTILER_KEY}`
+};
+const storedStyle = localStorage.getItem('fc_mapStyle') || 'standard';
+let currentStyle = MAP_STYLES[storedStyle] ? storedStyle : 'standard';
 
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyBLikY235Wr8capctDYiMEnt6AZflbShfs",
@@ -276,14 +301,13 @@ const FIREBASE_CONFIG = {
 const TESLA_WORKER_URL = "";
 
 // ============================================================
-// État global — identité PERSONNE ≠ identité APPAREIL
+// État global
 // ============================================================
 const $ = s => document.querySelector(s);
 const deviceId = localStorage.getItem('fc_id') || (localStorage.setItem('fc_id', crypto.randomUUID()), localStorage.getItem('fc_id'));
 const me = {
   id: localStorage.getItem('fc_person') || deviceId,
-  device: deviceId,
-  role: 'gps',
+  device: deviceId, role:'gps',
   name:'', group:'', lat:null, lng:null, speed:0, accuracy:null, battery:null
 };
 let members = {};
@@ -330,7 +354,6 @@ function bearingDeg(lat1,lng1,lat2,lng2){
 const ago = ts => { const s=Math.round((Date.now()-ts)/1000); return s<60?`${s}s`:`${Math.round(s/60)}min`; };
 const freshDev = d => Date.now()-(d.updatedAt||0) < 60000;
 
-// Tracés : une seule string compacte (quota-friendly)
 const serializePts = pts => pts.map(p=>p[0].toFixed(4)+','+p[1].toFixed(4)).join(';');
 const parsePts = s => (s||'').split(';').filter(Boolean).map(s=>s.split(',').map(Number));
 
@@ -432,17 +455,70 @@ $('#btn-night').onclick = () => {
 autoNight(); setInterval(autoNight, 60000);
 
 // ============================================================
-// 🗺️ Carte
+// 🗺️ Carte principale
 // ============================================================
-const map = new maplibregl.Map({ container:'map', style: MAP_STYLE, center:[2.35,48.85], zoom:5 });
-map.addControl(new maplibregl.NavigationControl(),'top-right');
-map.on('load', () => {
-  map.addSource('trails', { type:'geojson', data:{ type:'FeatureCollection', features:[] } });
-  map.addLayer({ id:'trail-lines', type:'line', source:'trails',
-    paint:{ 'line-width':3, 'line-opacity':0.7, 'line-color':['get','color'] } });
+const map = new maplibregl.Map({ container:'map', style: MAP_STYLES[currentStyle], center:[2.35,48.85], zoom:5 });
+map.addControl(new maplibregl.NavigationControl({showCompass:false}),'bottom-right');
+
+// Réinjecte les sources/layers après changement de style
+function injectTrailsLayer(m, sourceName, layerName){
+  if (!m.getSource(sourceName)) {
+    m.addSource(sourceName, { type:'geojson', data:{ type:'FeatureCollection', features:[] } });
+    m.addLayer({ id:layerName, type:'line', source:sourceName,
+      paint:{ 'line-width':3, 'line-opacity':0.7, 'line-color':['get','color'] } });
+  } else {
+    // Met à jour les données
+    const trailFC = {
+      type:'FeatureCollection',
+      features: Object.entries(trails).map(([id,pts]) => {
+        const all = getAll();
+        return {
+          type:'Feature',
+          properties:{ color: all[id]?.color || '#888' },
+          geometry:{ type:'LineString', coordinates: pts }
+        };
+      })
+    };
+    m.getSource(sourceName).setData(trailFC);
+  }
+}
+
+map.on('style.load', () => {
+  injectTrailsLayer(map, 'trails', 'trail-lines');
+  render();
 });
+map.on('load', () => injectTrailsLayer(map, 'trails', 'trail-lines'));
+
 map.on('dragstart', () => {
   if (followId) { followId = null; updateFollowPill(); }
+});
+
+// ============================================================
+// 🗺️ Sélecteur de style
+// ============================================================
+function changeMapStyle(styleKey){
+  if (!MAP_STYLES[styleKey]) return;
+  currentStyle = styleKey;
+  localStorage.setItem('fc_mapStyle', styleKey);
+
+  document.querySelectorAll('.sw-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.style === styleKey);
+  });
+
+  [map, driverMap, replayMap].forEach(m => {
+    if (m) {
+      // Marque le style en cours de chargement pour que l'event style.load puisse réinjecter
+      m.setStyle(MAP_STYLES[styleKey]);
+    }
+  });
+
+  const label = { standard:'standard', satellite:'satellite', hybrid:'hybride' }[styleKey];
+  pushAlert(`🗺️ Carte ${label}`, 'info', 1800);
+}
+
+document.querySelectorAll('.sw-btn').forEach(btn => {
+  btn.addEventListener('click', () => changeMapStyle(btn.dataset.style));
+  if (btn.dataset.style === currentStyle) btn.classList.add('active');
 });
 
 // ============================================================
@@ -723,7 +799,7 @@ async function updateRoutes(){
 setInterval(updateRoutes, 30000);
 
 // ============================================================
-// 📊 Trajets : enregistrement, reprise, prune, replay
+// 📊 Trajets
 // ============================================================
 function tripTick(){
   if (!joined || me.lat == null || !tripResumeChecked) return;
@@ -739,7 +815,6 @@ function tripTick(){
   }
   $('#d-trip').textContent = `${trip.dist.toFixed(1)} km`;
   if (trip.dist > 0.3 && now - trip.lastMove > 15*60000) { endTrip(); return; }
-  // Sauvegarde de secours toutes les 5 min (anti crash / app tuée)
   if (trip.dist > 0.3 && now - (trip.lastSave||0) > 300000) {
     trip.lastSave = now;
     saveTripProgress();
@@ -757,7 +832,6 @@ function saveTripProgress(){
   rtdb.set(rtdb.ref(db, `convoy/${me.group}/tracks/${trip.id}`), serializePts(trip.points));
 }
 
-// Reprend un trajet interrompu (app tuée, batterie…) < 12 h
 async function resumeTrip(){
   try {
     const snap = await rtdb.get(rtdb.ref(db, `convoy/${me.group}/history`));
@@ -800,7 +874,6 @@ function endTrip(){
 }
 window.addEventListener('beforeunload', endTrip);
 
-// Auto-nettoyage quota : 30 trajets max, > 60 jours supprimés
 async function pruneHistory(){
   if (!joined || !me.group) return;
   try {
@@ -809,7 +882,7 @@ async function pruneHistory(){
     const histUpd = {};
     const trackIds = [];
     entries.forEach(([id, v], idx) => {
-      if (v.ongoing) return; // ne jamais prune un trajet en cours
+      if (v.ongoing) return;
       if (idx >= 30 || Date.now()-(v.start||0) > 60*86400000) { histUpd[id] = null; trackIds.push(id); }
     });
     if (Object.keys(histUpd).length) {
@@ -819,7 +892,6 @@ async function pruneHistory(){
   } catch(e){}
 }
 
-// ----- Liste historique -----
 $('#btn-history').onclick = async () => {
   $('#history-overlay').classList.remove('hidden');
   const listEl = $('#history-list');
@@ -850,7 +922,7 @@ $('#btn-history').onclick = async () => {
 };
 $('#btn-close-history').onclick = () => $('#history-overlay').classList.add('hidden');
 
-// ----- Replay sur carte -----
+// ----- Replay -----
 let replayMap = null, replayMarker = null, replayRAF = null, replayPts = [];
 function setReplayLine(coords){
   if (replayMap && replayMap.getSource('replay-line'))
@@ -893,11 +965,17 @@ function openReplay(item, pts){
   $('#history-overlay').classList.add('hidden');
   $('#replay-overlay').classList.remove('hidden');
   if (!replayMap) {
-    replayMap = new maplibregl.Map({ container:'replay-map', style: MAP_STYLE, center:[2.35,48.85], zoom:5 });
-    replayMap.on('load', () => {
-      replayMap.addSource('replay-line', { type:'geojson', data:{ type:'Feature', geometry:{ type:'LineString', coordinates:[] } } });
-      replayMap.addLayer({ id:'replay-line-layer', type:'line', source:'replay-line',
-        paint:{ 'line-width':4, 'line-color':'#1a73e8', 'line-opacity':0.85 } });
+    replayMap = new maplibregl.Map({
+      container:'replay-map',
+      style: MAP_STYLES[currentStyle],
+      center:[2.35,48.85], zoom:5
+    });
+    replayMap.on('style.load', () => {
+      if (!replayMap.getSource('replay-line')) {
+        replayMap.addSource('replay-line', { type:'geojson', data:{ type:'Feature', geometry:{ type:'LineString', coordinates:[] } } });
+        replayMap.addLayer({ id:'replay-line-layer', type:'line', source:'replay-line',
+          paint:{ 'line-width':4, 'line-color':'#1a73e8', 'line-opacity':0.85 } });
+      }
       prepareReplay(); playReplay();
     });
   } else {
@@ -909,8 +987,8 @@ $('#history-list').addEventListener('click', async e => {
   if (!row) return;
   const item = historyCache.find(i => i.id === row.dataset.trip);
   if (!item) return;
-  let pts = item.points ? item.points.slice() : null;   // trajet local
-  if (!pts && item.hasPts && joined && me.group) {       // trajet distant : 1 seul get ciblé
+  let pts = item.points ? item.points.slice() : null;
+  if (!pts && item.hasPts && joined && me.group) {
     try {
       const snap = await rtdb.get(rtdb.ref(db, `convoy/${me.group}/tracks/${item.id}`));
       pts = parsePts(snap.val());
@@ -1113,15 +1191,15 @@ function enterDriverMode(){
   driverMode = true;
   document.body.classList.add('driver');
   if (!driverMap) {
-    driverMap = new maplibregl.Map({ container:'driver-map', style: MAP_STYLE, center:[me.lng||2.35, me.lat||48.85], zoom:15, pitch:45 });
-    driverMap.addControl(new maplibregl.NavigationControl(),'top-left');
-    driverMap.on('dragstart', ()=> followMe=false);
-    driverMap.on('load', () => {
-      driverMap.addSource('trails-d', { type:'geojson', data:{ type:'FeatureCollection', features:[] } });
-      driverMap.addLayer({ id:'trail-lines-d', type:'line', source:'trails-d',
-        paint:{ 'line-width':3, 'line-opacity':0.7, 'line-color':['get','color'] } });
-      render();
+    driverMap = new maplibregl.Map({
+      container:'driver-map',
+      style: MAP_STYLES[currentStyle],
+      center:[me.lng||2.35, me.lat||48.85], zoom:15, pitch:45
     });
+    driverMap.addControl(new maplibregl.NavigationControl({showCompass:false}),'bottom-right');
+    driverMap.on('dragstart', ()=> followMe=false);
+    driverMap.on('style.load', () => injectTrailsLayer(driverMap, 'trails-d', 'trail-lines-d'));
+    driverMap.on('load', () => injectTrailsLayer(driverMap, 'trails-d', 'trail-lines-d'));
   } else setTimeout(()=> driverMap.resize(), 50);
   setTimeout(render, 150);
   if (screen.orientation && screen.orientation.lock) screen.orientation.lock('landscape').catch(()=>{});
@@ -1160,7 +1238,7 @@ $('#btn-exit-driver').onclick = exitDriverMode;
 // 📲 PWA
 // ============================================================
 const SW_CODE = `
-const CACHE = 'fc-v12';
+const CACHE = 'fc-v13';
 self.addEventListener('install', e => { self.skipWaiting(); });
 self.addEventListener('activate', e => { e.waitUntil(self.clients.claim()); });
 self.addEventListener('fetch', e => {
