@@ -114,6 +114,13 @@
   #qr-box{display:flex;justify-content:center;margin:16px 0}
   #qr-box img,#qr-box canvas{border-radius:12px;background:#fff;padding:8px}
 
+  /* ===== Replay ===== */
+  #replay-map{height:44vh;width:100%;border-radius:16px;overflow:hidden}
+  .replay-head{padding:20px 22px 12px}
+  .replay-head h1{font-size:17px}
+  .replay-foot{padding:14px 22px 20px;display:flex;gap:10px}
+  .replay-foot button{margin-top:0}
+
   /* ===== Mode conduite ===== */
   body.driver .header,body.driver .panel,body.driver .dock{display:none}
   body.driver #btn-radio{top:auto;bottom:24px;right:24px;left:auto}
@@ -226,9 +233,25 @@
 <!-- Historique -->
 <div class="overlay hidden" id="history-overlay">
   <div class="card">
-    <h1>📊 Mes trajets</h1>
-    <div id="history-list" style="max-height:48vh;overflow-y:auto;margin-top:10px"><div class="row"><span>Chargement…</span></div></div>
+    <h1>📊 Trajets du convoi</h1>
+    <p class="hint" style="margin-top:0">Tape un trajet pour le revoir sur la carte.</p>
+    <div id="history-list" style="max-height:44vh;overflow-y:auto;margin-top:6px"><div class="row"><span>Chargement…</span></div></div>
     <button id="btn-close-history" class="btn-ghost">Fermer</button>
+  </div>
+</div>
+
+<!-- Replay -->
+<div class="overlay hidden" id="replay-overlay">
+  <div class="card" style="width:min(100%,420px);padding:0;overflow:hidden">
+    <div class="replay-head">
+      <h1 id="replay-title">📊 Trajet</h1>
+      <div class="hint" id="replay-stats" style="margin-top:4px"></div>
+    </div>
+    <div id="replay-map"></div>
+    <div class="replay-foot">
+      <button id="btn-replay-play" class="btn-primary">▶ Rejouer</button>
+      <button id="btn-replay-close" class="btn-ghost">Fermer</button>
+    </div>
   </div>
 </div>
 
@@ -238,6 +261,7 @@
 // ============================================================
 const MAPTILER_KEY      = 'nJnYbbeBVl4T09PtkVVv';
 const MAPTILER_STYLE_ID = '01a140ea-aca7-765a-b3b1-df5d0b2d41a4';
+const MAP_STYLE = `https://api.maptiler.com/maps/${MAPTILER_STYLE_ID}/style.json?key=${MAPTILER_KEY}`;
 
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyBLikY235Wr8capctDYiMEnt6AZflbShfs",
@@ -257,9 +281,9 @@ const TESLA_WORKER_URL = "";
 const $ = s => document.querySelector(s);
 const deviceId = localStorage.getItem('fc_id') || (localStorage.setItem('fc_id', crypto.randomUUID()), localStorage.getItem('fc_id'));
 const me = {
-  id: localStorage.getItem('fc_person') || deviceId, // identité PERSONNE
-  device: deviceId,                                   // identité APPAREIL
-  role: 'gps',                                        // 'gps' | 'screen'
+  id: localStorage.getItem('fc_person') || deviceId,
+  device: deviceId,
+  role: 'gps',
   name:'', group:'', lat:null, lng:null, speed:0, accuracy:null, battery:null
 };
 let members = {};
@@ -282,6 +306,8 @@ let voiceOn = true;
 let nightManual = null;
 let myHeading = null;
 let trip = null;
+let tripResumeChecked = false;
+let historyCache = [];
 let netIcon = '';
 let lastGPSUpdate = 0;
 let shareLink = '';
@@ -304,8 +330,12 @@ function bearingDeg(lat1,lng1,lat2,lng2){
 const ago = ts => { const s=Math.round((Date.now()-ts)/1000); return s<60?`${s}s`:`${Math.round(s/60)}min`; };
 const freshDev = d => Date.now()-(d.updatedAt||0) < 60000;
 
+// Tracés : une seule string compacte (quota-friendly)
+const serializePts = pts => pts.map(p=>p[0].toFixed(4)+','+p[1].toFixed(4)).join(';');
+const parsePts = s => (s||'').split(';').filter(Boolean).map(s=>s.split(',').map(Number));
+
 // ============================================================
-// Liste unifiée : membres vivants + Tesla + moi (ghost si caché)
+// Liste unifiée
 // ============================================================
 function getAll(){
   const all = {};
@@ -404,11 +434,7 @@ autoNight(); setInterval(autoNight, 60000);
 // ============================================================
 // 🗺️ Carte
 // ============================================================
-const map = new maplibregl.Map({
-  container:'map',
-  style:`https://api.maptiler.com/maps/${MAPTILER_STYLE_ID}/style.json?key=${MAPTILER_KEY}`,
-  center:[2.35,48.85], zoom:5
-});
+const map = new maplibregl.Map({ container:'map', style: MAP_STYLE, center:[2.35,48.85], zoom:5 });
 map.addControl(new maplibregl.NavigationControl(),'top-right');
 map.on('load', () => {
   map.addSource('trails', { type:'geojson', data:{ type:'FeatureCollection', features:[] } });
@@ -514,7 +540,7 @@ document.addEventListener('visibilitychange', () => {
 });
 
 // ============================================================
-// 📡 Partage — 1 entrée membre (personne) + 1 entrée par appareil
+// 📡 Partage
 // ============================================================
 function setRole(r, silent){
   if (me.role === r || !myRef) return;
@@ -545,7 +571,6 @@ function startSharing(){
   rtdb.onDisconnect(deviceRef).remove();
   if (me.role === 'gps') rtdb.onDisconnect(myRef).update({ lat:null, lng:null, speed:0, gpsDevice:null });
 
-  // Élection initiale : si un autre de MES appareils est déjà GPS → mode écran
   rtdb.get(myRef).then(snap => {
     const v = snap.val() || {};
     const gps = Object.entries(v.devices||{}).find(([did,d]) => d.role==='gps' && freshDev(d));
@@ -573,7 +598,6 @@ function startSharing(){
   };
   rtdb.onChildAdded(radioRef, radioCb);
 
-  // Nettoyage des messages radio de plus de 10 minutes
   rtdb.get(radioRef).then(snap => {
     const updates = {};
     Object.entries(snap.val() || {}).forEach(([k, m]) => {
@@ -584,6 +608,8 @@ function startSharing(){
 
   setTimeout(updateRoutes, 4000);
   updateRoleUI(); updateStatus();
+  resumeTrip();
+  pruneHistory();
 }
 
 setInterval(() => {
@@ -613,6 +639,7 @@ function leaveGroup(clearName=false){
   if (membersRef && membersCb) rtdb.off(membersRef, membersCb);
   if (radioRef && radioCb) rtdb.off(radioRef, radioCb);
   joined = false; hidden = false; followId = null; me.role = 'gps';
+  tripResumeChecked = false;
   updateFollowPill(); updateRoleUI();
   members = {};
   for (const k of Object.keys(trails)) delete trails[k];
@@ -674,7 +701,7 @@ function detectAlerts(){
 }
 
 // ============================================================
-// 🛣️ Itinéraires (cache + parallèle)
+// 🛣️ Itinéraires
 // ============================================================
 async function updateRoutes(){
   if (!joined || me.lat == null) return;
@@ -696,24 +723,61 @@ async function updateRoutes(){
 setInterval(updateRoutes, 30000);
 
 // ============================================================
-// 📊 Historique
+// 📊 Trajets : enregistrement, reprise, prune, replay
 // ============================================================
 function tripTick(){
-  if (!joined || me.lat == null) return;
+  if (!joined || me.lat == null || !tripResumeChecked) return;
   const now = Date.now();
-  if (!trip) trip = { id:`${now}`, start:now, dist:0, lastLat:me.lat, lastLng:me.lng, points:[[me.lng, me.lat]], lastMove:now };
+  if (!trip) trip = { id:`${now}`, start:now, dist:0, lastLat:me.lat, lastLng:me.lng, points:[[me.lng, me.lat]], lastMove:now, lastSave:0 };
   const d = haversineKm(trip.lastLat, trip.lastLng, me.lat, me.lng);
   if (d*1000 > 60) {
     trip.dist += d;
     trip.points.push([me.lng, me.lat]);
-    if (trip.points.length > 600) trip.points.shift();
+    if (trip.points.length > 400) trip.points.shift();
     trip.lastLat = me.lat; trip.lastLng = me.lng;
     trip.lastMove = now;
   }
   $('#d-trip').textContent = `${trip.dist.toFixed(1)} km`;
-  if (trip.dist > 0.3 && now - trip.lastMove > 15*60000) endTrip();
+  if (trip.dist > 0.3 && now - trip.lastMove > 15*60000) { endTrip(); return; }
+  // Sauvegarde de secours toutes les 5 min (anti crash / app tuée)
+  if (trip.dist > 0.3 && now - (trip.lastSave||0) > 300000) {
+    trip.lastSave = now;
+    saveTripProgress();
+  }
 }
 setInterval(tripTick, 10000);
+
+function saveTripProgress(){
+  if (!joined || !me.group || !trip) return;
+  rtdb.set(rtdb.ref(db, `convoy/${me.group}/history/${trip.id}`), {
+    name: me.name, start: trip.start, end: Date.now(),
+    km: +trip.dist.toFixed(1), min: Math.round((Date.now()-trip.start)/60000),
+    hasPts: true, ongoing: true
+  });
+  rtdb.set(rtdb.ref(db, `convoy/${me.group}/tracks/${trip.id}`), serializePts(trip.points));
+}
+
+// Reprend un trajet interrompu (app tuée, batterie…) < 12 h
+async function resumeTrip(){
+  try {
+    const snap = await rtdb.get(rtdb.ref(db, `convoy/${me.group}/history`));
+    const val = snap.val() || {};
+    const mine = Object.entries(val)
+      .filter(([id,v]) => v.ongoing && v.name === me.name && Date.now()-v.start < 12*3600000)
+      .sort((a,b)=>b[1].start-a[1].start)[0];
+    if (mine && !trip) {
+      const [id, v] = mine;
+      const tSnap = await rtdb.get(rtdb.ref(db, `convoy/${me.group}/tracks/${id}`));
+      const pts = parsePts(tSnap.val());
+      if (pts.length) {
+        const last = pts[pts.length-1];
+        trip = { id, start: v.start, dist: v.km||0, lastLat: last[1], lastLng: last[0], points: pts, lastMove: Date.now(), lastSave: Date.now() };
+        pushAlert(`🛣️ Trajet repris : ${v.km} km déjà parcourus`, 'info');
+      }
+    }
+  } catch(e){}
+  tripResumeChecked = true;
+}
 
 function endTrip(){
   if (!trip || trip.dist < 0.3) { trip = null; return; }
@@ -721,17 +785,41 @@ function endTrip(){
     name: me.name, start: trip.start, end: Date.now(),
     km: +trip.dist.toFixed(1),
     min: Math.round((Date.now()-trip.start)/60000),
-    points: trip.points
+    hasPts: true
   };
-  if (joined && db && me.group) rtdb.set(rtdb.ref(db, `convoy/${me.group}/history/${trip.id}`), summary);
+  if (joined && db && me.group) {
+    rtdb.set(rtdb.ref(db, `convoy/${me.group}/history/${trip.id}`), summary);
+    rtdb.set(rtdb.ref(db, `convoy/${me.group}/tracks/${trip.id}`), serializePts(trip.points));
+    pruneHistory();
+  }
   const local = JSON.parse(localStorage.getItem('fc_trips')||'[]');
-  local.unshift(summary);
+  local.unshift({ ...summary, id: trip.id, points: trip.points });
   localStorage.setItem('fc_trips', JSON.stringify(local.slice(0,20)));
   trip = null;
   $('#d-trip').textContent = '0 km';
 }
 window.addEventListener('beforeunload', endTrip);
 
+// Auto-nettoyage quota : 30 trajets max, > 60 jours supprimés
+async function pruneHistory(){
+  if (!joined || !me.group) return;
+  try {
+    const snap = await rtdb.get(rtdb.ref(db, `convoy/${me.group}/history`));
+    const entries = Object.entries(snap.val() || {}).sort((a,b)=>(b[1].start||0)-(a[1].start||0));
+    const histUpd = {};
+    const trackIds = [];
+    entries.forEach(([id, v], idx) => {
+      if (v.ongoing) return; // ne jamais prune un trajet en cours
+      if (idx >= 30 || Date.now()-(v.start||0) > 60*86400000) { histUpd[id] = null; trackIds.push(id); }
+    });
+    if (Object.keys(histUpd).length) {
+      await rtdb.update(rtdb.ref(db, `convoy/${me.group}/history`), histUpd);
+      for (const id of trackIds) rtdb.set(rtdb.ref(db, `convoy/${me.group}/tracks/${id}`), null);
+    }
+  } catch(e){}
+}
+
+// ----- Liste historique -----
 $('#btn-history').onclick = async () => {
   $('#history-overlay').classList.remove('hidden');
   const listEl = $('#history-list');
@@ -740,25 +828,104 @@ $('#btn-history').onclick = async () => {
   if (joined && me.group) {
     try {
       const snap = await rtdb.get(rtdb.ref(db, `convoy/${me.group}/history`));
-      items = Object.values(snap.val() || {});
+      items = Object.entries(snap.val() || {}).map(([id,v]) => ({...v, id}));
     } catch(e){}
   }
   const local = JSON.parse(localStorage.getItem('fc_trips')||'[]');
   const seen = new Set(items.map(i=>i.start));
-  for (const l of local) if (!seen.has(l.start)) items.push(l);
+  for (const l of local) if (!seen.has(l.start)) items.push({...l, id: l.id || String(l.start)});
   items.sort((a,b)=>b.start-a.start);
-  items = items.slice(0,15);
-  listEl.innerHTML = items.length ? items.map(i=>
-    `<div class="row"><div class="avatar" style="background:var(--accent)">🗓️</div>
-     <div class="who"><div class="nm">${new Date(i.start).toLocaleDateString('fr-FR')} — ${i.name||'?'}</div>
-     <div class="sub">${i.min} min de trajet</div></div>
-     <div class="rt"><div class="dst">${i.km} km</div></div></div>`
-  ).join('') : '<div class="row"><span>Aucun trajet enregistré pour l\'instant</span></div>';
+  historyCache = items.slice(0,15);
+  listEl.innerHTML = historyCache.length ? historyCache.map(i=>{
+    const avg = i.min>0 ? Math.round(i.km/(i.min/60)) : '—';
+    return `<div class="row" data-trip="${i.id}">
+      <div class="avatar" style="background:var(--accent)">🗓️</div>
+      <div class="who">
+        <div class="nm">${new Date(i.start).toLocaleDateString('fr-FR')} — ${i.name||'?'}</div>
+        <div class="sub">${i.min} min · Ø ${avg} km/h${i.ongoing?' · 🔴 en cours':''}</div>
+      </div>
+      <div class="rt"><div class="dst">${i.km} km</div><div class="tm">▶ voir</div></div>
+    </div>`;
+  }).join('') : '<div class="row"><span>Aucun trajet enregistré pour l\'instant</span></div>';
 };
 $('#btn-close-history').onclick = () => $('#history-overlay').classList.add('hidden');
 
+// ----- Replay sur carte -----
+let replayMap = null, replayMarker = null, replayRAF = null, replayPts = [];
+function setReplayLine(coords){
+  if (replayMap && replayMap.getSource('replay-line'))
+    replayMap.getSource('replay-line').setData({ type:'Feature', geometry:{ type:'LineString', coordinates:coords } });
+}
+function prepareReplay(){
+  if (!replayMap) return;
+  setReplayLine(replayPts);
+  if (replayPts.length) {
+    if (!replayMarker) {
+      const el = document.createElement('div');
+      el.className = 'marker'; el.style.background = '#1a73e8'; el.textContent = '🚗';
+      replayMarker = new maplibregl.Marker({element:el}).addTo(replayMap);
+    }
+    replayMarker.setLngLat(replayPts[0]);
+    const b = new maplibregl.LngLatBounds();
+    replayPts.forEach(p=>b.extend(p));
+    replayMap.fitBounds(b, {padding:50, maxZoom:16});
+  }
+}
+function playReplay(){
+  if (!replayMap || !replayMap.getSource('replay-line') || replayPts.length < 2) return;
+  cancelAnimationFrame(replayRAF);
+  const dur = Math.min(12000, Math.max(5000, replayPts.length*40));
+  const t0 = performance.now();
+  const step = now => {
+    const k = Math.min(1, (now-t0)/dur);
+    const idx = Math.max(1, Math.floor(k*replayPts.length));
+    setReplayLine(replayPts.slice(0, idx));
+    if (replayMarker) replayMarker.setLngLat(replayPts[idx-1]);
+    if (k < 1) replayRAF = requestAnimationFrame(step);
+  };
+  replayRAF = requestAnimationFrame(step);
+}
+function openReplay(item, pts){
+  replayPts = pts;
+  const avg = item.min>0 ? Math.round(item.km/(item.min/60)) : '—';
+  $('#replay-title').textContent = `📊 ${new Date(item.start).toLocaleDateString('fr-FR')} — ${item.name||'?'}`;
+  $('#replay-stats').textContent = `${item.km} km · ${item.min} min · Ø ${avg} km/h · ${pts.length} pts`;
+  $('#history-overlay').classList.add('hidden');
+  $('#replay-overlay').classList.remove('hidden');
+  if (!replayMap) {
+    replayMap = new maplibregl.Map({ container:'replay-map', style: MAP_STYLE, center:[2.35,48.85], zoom:5 });
+    replayMap.on('load', () => {
+      replayMap.addSource('replay-line', { type:'geojson', data:{ type:'Feature', geometry:{ type:'LineString', coordinates:[] } } });
+      replayMap.addLayer({ id:'replay-line-layer', type:'line', source:'replay-line',
+        paint:{ 'line-width':4, 'line-color':'#1a73e8', 'line-opacity':0.85 } });
+      prepareReplay(); playReplay();
+    });
+  } else {
+    setTimeout(()=>{ replayMap.resize(); prepareReplay(); playReplay(); }, 60);
+  }
+}
+$('#history-list').addEventListener('click', async e => {
+  const row = e.target.closest('.row[data-trip]');
+  if (!row) return;
+  const item = historyCache.find(i => i.id === row.dataset.trip);
+  if (!item) return;
+  let pts = item.points ? item.points.slice() : null;   // trajet local
+  if (!pts && item.hasPts && joined && me.group) {       // trajet distant : 1 seul get ciblé
+    try {
+      const snap = await rtdb.get(rtdb.ref(db, `convoy/${me.group}/tracks/${item.id}`));
+      pts = parsePts(snap.val());
+    } catch(err){}
+  }
+  openReplay(item, pts || []);
+});
+$('#btn-replay-play').onclick = playReplay;
+$('#btn-replay-close').onclick = () => {
+  cancelAnimationFrame(replayRAF);
+  $('#replay-overlay').classList.add('hidden');
+};
+
 // ============================================================
-// 🎙️ Talkie-walkie (15 s max)
+// 🎙️ Talkie-walkie
 // ============================================================
 let mediaRec = null, radioChunks = [], radioTimer = null;
 const btnRadio = $('#btn-radio');
@@ -946,11 +1113,7 @@ function enterDriverMode(){
   driverMode = true;
   document.body.classList.add('driver');
   if (!driverMap) {
-    driverMap = new maplibregl.Map({
-      container:'driver-map',
-      style:`https://api.maptiler.com/maps/${MAPTILER_STYLE_ID}/style.json?key=${MAPTILER_KEY}`,
-      center:[me.lng||2.35, me.lat||48.85], zoom:15, pitch:45
-    });
+    driverMap = new maplibregl.Map({ container:'driver-map', style: MAP_STYLE, center:[me.lng||2.35, me.lat||48.85], zoom:15, pitch:45 });
     driverMap.addControl(new maplibregl.NavigationControl(),'top-left');
     driverMap.on('dragstart', ()=> followMe=false);
     driverMap.on('load', () => {
@@ -997,7 +1160,7 @@ $('#btn-exit-driver').onclick = exitDriverMode;
 // 📲 PWA
 // ============================================================
 const SW_CODE = `
-const CACHE = 'fc-v11';
+const CACHE = 'fc-v12';
 self.addEventListener('install', e => { self.skipWaiting(); });
 self.addEventListener('activate', e => { e.waitUntil(self.clients.claim()); });
 self.addEventListener('fetch', e => {
@@ -1017,7 +1180,7 @@ if ('serviceWorker' in navigator) {
 }
 
 // ============================================================
-// 🔐 Rejoindre (validation + appairage ?p=)
+// 🔐 Rejoindre
 // ============================================================
 const params = new URLSearchParams(location.search);
 const pairPerson = params.get('p');
@@ -1088,7 +1251,7 @@ $('#btn-quit').onclick = () => {
 };
 
 // ============================================================
-// 📤 QR : invitation vs appairage
+// 📤 QR
 // ============================================================
 function openShare(mode){
   if (!me.group) { pushAlert('Rejoins d\'abord un convoi','info'); return; }
