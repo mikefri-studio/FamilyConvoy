@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="theme-color" content="#1a73e8">
 <title>Family Convoy 🚗</title>
-<!-- ⚠️ Pense à durcir les règles Firebase Console (lecture/écriture limitées aux membres du convoi) -->
 <link rel="manifest" href='data:application/manifest+json,{"name":"Family Convoy","short_name":"Convoy","start_url":".","display":"standalone","background_color":"%231a73e8","theme_color":"%231a73e8","description":"Suivi familial en convoi","icons":[{"src":"data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2220%22 fill=%22%231a73e8%22/><text x=%2250%22 y=%2268%22 font-size=%2260%22 text-anchor=%22middle%22>🚗</text></svg>","sizes":"192x192","type":"image/svg+xml"}]}'>
 <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
 <link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet"/>
@@ -258,9 +257,9 @@ const TESLA_WORKER_URL = "";
 const $ = s => document.querySelector(s);
 const deviceId = localStorage.getItem('fc_id') || (localStorage.setItem('fc_id', crypto.randomUUID()), localStorage.getItem('fc_id'));
 const me = {
-  id: localStorage.getItem('fc_person') || deviceId, // identité PERSONNE (partageable entre appareils)
-  device: deviceId,                                   // identité APPAREIL (unique)
-  role: 'gps',                                        // 'gps' = envoie la position | 'screen' = simple écran
+  id: localStorage.getItem('fc_person') || deviceId, // identité PERSONNE
+  device: deviceId,                                   // identité APPAREIL
+  role: 'gps',                                        // 'gps' | 'screen'
   name:'', group:'', lat:null, lng:null, speed:0, accuracy:null, battery:null
 };
 let members = {};
@@ -306,7 +305,7 @@ const ago = ts => { const s=Math.round((Date.now()-ts)/1000); return s<60?`${s}s
 const freshDev = d => Date.now()-(d.updatedAt||0) < 60000;
 
 // ============================================================
-//  Liste unifiée : membres vivants + Tesla + moi (ghost si caché)
+// Liste unifiée : membres vivants + Tesla + moi (ghost si caché)
 // ============================================================
 function getAll(){
   const all = {};
@@ -461,7 +460,7 @@ const rtdb = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-d
 db = rtdb.getDatabase(initializeApp(FIREBASE_CONFIG));
 
 // ============================================================
-// 📍 GPS (léger debounce à l'arrêt)
+// 📍 GPS
 // ============================================================
 function updateStatus(){
   if (!joined) { $('#status').textContent = 'hors convoi'; return; }
@@ -476,7 +475,7 @@ function startGPS(){
     if (me.lat != null) {
       const moved = haversineKm(me.lat,me.lng,newLat,newLng)*1000;
       if (moved > 20) myHeading = bearingDeg(me.lat,me.lng,newLat,newLng);
-      if (moved < 15 && me.speed < 5 && now - lastGPSUpdate < 2500) return; // debounce à l'arrêt
+      if (moved < 15 && me.speed < 5 && now - lastGPSUpdate < 2500) return;
     }
     if (p.coords.heading != null && me.speed > 5) myHeading = p.coords.heading;
     me.lat = newLat; me.lng = newLng;
@@ -488,7 +487,6 @@ function startGPS(){
   { enableHighAccuracy:true, maximumAge:2000, timeout:15000 });
 }
 
-// Qualité réseau (icône status)
 function updateNetIcon(){
   const c = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
   if (!c) { netIcon = ''; return; }
@@ -496,7 +494,7 @@ function updateNetIcon(){
   netIcon = (t === '4g' && (c.downlink||0) > 5) ? '🟢' : t === '4g' ? '🟢' : t === '3g' ? '🟡' : '🔴';
   updateStatus();
 }
-if (navigator.connection?.addEventListener) navigator.connection.addEventListener('change', updateNetIcon);
+if (navigator.connection && navigator.connection.addEventListener) navigator.connection.addEventListener('change', updateNetIcon);
 updateNetIcon();
 
 if (navigator.getBattery) navigator.getBattery().then(b => {
@@ -558,7 +556,7 @@ function startSharing(){
   membersCb = snap => {
     members = snap.val() || {};
     const myNode = members[me.id];
-    if (myNode?.gpsDevice) {
+    if (myNode && myNode.gpsDevice) {
       if (myNode.gpsDevice !== me.device && me.role === 'gps') setRole('screen');
       if (myNode.gpsDevice === me.device && me.role === 'screen') setRole('gps');
     }
@@ -569,19 +567,27 @@ function startSharing(){
   radioRef = rtdb.ref(db, `convoy/${me.group}/radio`);
   radioCb = snap => {
     const m = snap.val();
-    if (!m || (m.fromPerson || m.from) === me.id) return; // ignore mes propres messages (tous mes appareils)
-    if (m.fromPerson === me.id) return;
+    if (!m || m.fromPerson === me.id || m.from === me.device) return;
     if (Date.now() - m.ts > 120000) return;
     playRadio(m);
   };
   rtdb.onChildAdded(radioRef, radioCb);
+
+  // Nettoyage des messages radio de plus de 10 minutes
+  rtdb.get(radioRef).then(snap => {
+    const updates = {};
+    Object.entries(snap.val() || {}).forEach(([k, m]) => {
+      if (Date.now() - (m.ts||0) > 600000) updates[k] = null;
+    });
+    if (Object.keys(updates).length) rtdb.update(radioRef, updates);
+  }).catch(()=>{});
+
   setTimeout(updateRoutes, 4000);
   updateRoleUI(); updateStatus();
 }
 
 setInterval(() => {
   if (!joined || hidden || me.lat == null || !myRef) return;
-  // Heartbeat appareil
   rtdb.set(deviceRef, { role: me.role, lat: me.lat, lng: me.lng, battery: phoneBattery, updatedAt: Date.now() });
   if (me.role === 'gps') {
     rtdb.update(myRef, {
@@ -590,7 +596,7 @@ setInterval(() => {
       gpsDevice: me.device, updatedAt: Date.now()
     });
   } else {
-    rtdb.update(myRef, { name: me.name, color: colorFor(me.id) }); // garantit l'existence du nœud personne
+    rtdb.update(myRef, { name: me.name, color: colorFor(me.id) });
   }
 }, 5000);
 
@@ -668,7 +674,7 @@ function detectAlerts(){
 }
 
 // ============================================================
-// 🛣️ Itinéraires (cache + requêtes parallèles)
+// 🛣️ Itinéraires (cache + parallèle)
 // ============================================================
 async function updateRoutes(){
   if (!joined || me.lat == null) return;
@@ -681,7 +687,7 @@ async function updateRoutes(){
     jobs.push(
       fetch(`https://router.project-osrm.org/route/v1/driving/${me.lng},${me.lat};${v.lng},${v.lat}?overview=false`)
         .then(r=>r.json())
-        .then(j=>{ if (j.code==='Ok' && j.routes?.[0]) routeCache[id] = { km:j.routes[0].distance/1000, min:Math.round(j.routes[0].duration/60), ts:Date.now() }; })
+        .then(j=>{ if (j.code==='Ok' && j.routes && j.routes[0]) routeCache[id] = { km:j.routes[0].distance/1000, min:Math.round(j.routes[0].duration/60), ts:Date.now() }; })
         .catch(()=>{})
     );
   }
@@ -752,7 +758,7 @@ $('#btn-history').onclick = async () => {
 $('#btn-close-history').onclick = () => $('#history-overlay').classList.add('hidden');
 
 // ============================================================
-// 🎙️ Talkie-walkie (15 s max, ignoré sur mes autres appareils)
+// 🎙️ Talkie-walkie (15 s max)
 // ============================================================
 let mediaRec = null, radioChunks = [], radioTimer = null;
 const btnRadio = $('#btn-radio');
@@ -764,6 +770,11 @@ function playRadio(m){
   const audio = new Audio(`data:${m.mime||'audio/webm'};base64,${m.data}`);
   audio.play().catch(()=>{});
 }
+function stopRadio(){
+  if (mediaRec && mediaRec.state === 'recording') mediaRec.stop();
+  clearTimeout(radioTimer);
+  btnRadio.classList.remove('recording');
+}
 btnRadio.addEventListener('pointerdown', async e => {
   e.preventDefault();
   if (!joined) { pushAlert('Rejoins d\'abord un convoi','info'); return; }
@@ -772,7 +783,7 @@ btnRadio.addEventListener('pointerdown', async e => {
     mediaRec = new MediaRecorder(stream);
     radioChunks = [];
     mediaRec.ondataavailable = ev => radioChunks.push(ev.data);
-    radioTimer = setTimeout(()=>{ if (mediaRec?.state === 'recording') stopRadio(); }, 15000);
+    radioTimer = setTimeout(()=>{ if (mediaRec && mediaRec.state === 'recording') stopRadio(); }, 15000);
     mediaRec.onstop = async () => {
       stream.getTracks().forEach(t=>t.stop());
       const blob = new Blob(radioChunks, {type: mediaRec.mimeType || 'audio/webm'});
@@ -788,11 +799,6 @@ btnRadio.addEventListener('pointerdown', async e => {
     if (navigator.vibrate) navigator.vibrate(50);
   } catch(err){ pushAlert('🎙️ Micro refusé','warn'); }
 });
-function stopRadio(){
-  if (mediaRec && mediaRec.state === 'recording') mediaRec.stop();
-  clearTimeout(radioTimer);
-  btnRadio.classList.remove('recording');
-}
 ['pointerup','pointercancel','pointerleave'].forEach(ev => btnRadio.addEventListener(ev, stopRadio));
 
 // ============================================================
@@ -955,12 +961,12 @@ function enterDriverMode(){
     });
   } else setTimeout(()=> driverMap.resize(), 50);
   setTimeout(render, 150);
-  if (screen.orientation?.lock) screen.orientation.lock('landscape').catch(()=>{});
+  if (screen.orientation && screen.orientation.lock) screen.orientation.lock('landscape').catch(()=>{});
 }
 function exitDriverMode(){
   driverMode = false;
   document.body.classList.remove('driver');
-  if (screen.orientation?.unlock) screen.orientation.unlock();
+  if (screen.orientation && screen.orientation.unlock) screen.orientation.unlock();
 }
 $('#btn-center-me').onclick = () => {
   if (me.lat != null && driverMap) {
@@ -991,7 +997,7 @@ $('#btn-exit-driver').onclick = exitDriverMode;
 // 📲 PWA
 // ============================================================
 const SW_CODE = `
-const CACHE = 'fc-v10';
+const CACHE = 'fc-v11';
 self.addEventListener('install', e => { self.skipWaiting(); });
 self.addEventListener('activate', e => { e.waitUntil(self.clients.claim()); });
 self.addEventListener('fetch', e => {
@@ -1022,7 +1028,7 @@ function join(){
   if (!name) { pushAlert('⚠️ Entre un nom','warn'); return; }
   if (group.length < 3 || group.length > 20) { pushAlert('⚠️ Code invalide (3-20 lettres/chiffres)','warn'); return; }
 
-  if (pairPerson) { // 2e appareil de la même personne
+  if (pairPerson) {
     me.id = pairPerson;
     me.role = 'screen';
     localStorage.setItem('fc_person', pairPerson);
@@ -1082,7 +1088,7 @@ $('#btn-quit').onclick = () => {
 };
 
 // ============================================================
-// 📤 QR : invitation (nouvelle personne) vs appairage (mon appareil)
+// 📤 QR : invitation vs appairage
 // ============================================================
 function openShare(mode){
   if (!me.group) { pushAlert('Rejoins d\'abord un convoi','info'); return; }
