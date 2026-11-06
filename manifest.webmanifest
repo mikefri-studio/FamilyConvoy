@@ -1,0 +1,13 @@
+{
+  "name": "Family Convoy",
+  "short_name": "Convoy",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "background_color": "#1a73e8",
+  "theme_color": "#1a73e8",
+  "description": "Suivi familial en convoi",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
