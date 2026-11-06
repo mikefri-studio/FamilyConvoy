@@ -4,6 +4,9 @@
 import { $ } from './utils.js';
 import { S, me } from './state.js';
 
+let canVibrate = false;
+document.addEventListener('pointerdown', () => { canVibrate = true; }, { once: true });
+
 export function speak(txt){
   if (!S.voiceOn || !('speechSynthesis' in window)) return;
   const clean = txt.replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/gu,'');
@@ -17,7 +20,7 @@ export function pushAlert(msg, type='warn', ttl=6000){
   el.className = 'alert ' + type;
   el.textContent = msg;
   $('#alerts').prepend(el);
-  if (navigator.vibrate) navigator.vibrate(type==='warn'?[200,100,200]:[100]);
+  if (canVibrate && navigator.vibrate) navigator.vibrate(type==='warn'?[200,100,200]:[100]);
   if (type==='warn') speak(msg);
   setTimeout(()=>el.remove(), ttl);
 }
