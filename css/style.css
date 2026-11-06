@@ -42,7 +42,19 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;o
 .row:last-child{border-bottom:none}
 .row.old{opacity:.45}
 .row.followed{box-shadow:inset 3px 0 0 var(--accent);background:rgba(26,115,232,.08)}
-.avatar{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:15px;flex:none;box-shadow:0 2px 8px rgba(0,0,0,.25);background-size:cover;background-position:center}
+
+/* Avatar dans la liste : 3 modes (texte / emoji / photo), sans rond */
+.avatar{
+  width:38px;height:38px;border-radius:12px;
+  display:flex;align-items:center;justify-content:center;
+  color:#fff;font-weight:800;font-size:15px;flex:none;
+  box-shadow:0 2px 8px rgba(0,0,0,.18);
+  background-size:cover;background-position:center;
+}
+.avatar.av-txt{background:#888}                       /* initiale : badge carré coloré */
+.avatar.av-emo{background:transparent!important;box-shadow:none;font-size:26px}  /* emoji libre */
+.avatar.av-img{box-shadow:0 2px 8px rgba(0,0,0,.25)}  /* photo : carré arrondi */
+
 .who{flex:1;min-width:0}
 .who .nm{font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .who .sub{font-size:11px;color:var(--muted);margin-top:1px}
@@ -75,14 +87,26 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;o
 .map-switcher .sw-btn img{width:100%;height:100%;object-fit:cover;display:block}
 body.driver .map-switcher{display:none}
 
-/* Markers */
-.marker{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px;font-weight:800;border:3px solid #fff;box-shadow:0 3px 10px rgba(0,0,0,.45);cursor:pointer;background-size:cover;background-position:center}
-.marker.me{border:3px solid #ffeb3b;box-shadow:0 0 0 4px #1a73e8,0 3px 10px rgba(0,0,0,.45)}
-.marker.ghost{opacity:.55;border-style:dashed}
+/* ===== Markers : logo libre, sans rond ===== */
+.marker{
+  width:44px;height:44px;
+  border:none;background:transparent;
+  display:flex;align-items:center;justify-content:center;
+  cursor:pointer;border-radius:12px;
+  background-size:cover;background-position:center;
+  filter:drop-shadow(0 2px 5px rgba(0,0,0,.55));
+  transition:transform .15s;
+}
+.marker:active{transform:scale(.92)}
+.marker.av-txt{color:#fff;font-size:16px;font-weight:800}   /* initiale : badge carré coloré */
+.marker.av-emo{font-size:32px;line-height:1}                /* emoji libre, en grand */
+.marker.av-img{border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.45)}  /* photo : carré arrondi */
+.marker.me{filter:drop-shadow(0 0 3px #ffeb3b) drop-shadow(0 0 7px #1a73e8) drop-shadow(0 2px 5px rgba(0,0,0,.5))}
+.marker.ghost{opacity:.55}
 .marker.followed{animation:pulseFollow 2s infinite}
 @keyframes pulseFollow{
-  0%,100%{box-shadow:0 0 0 4px #00e676,0 0 18px #00e676,0 3px 10px rgba(0,0,0,.45)}
-  50%{box-shadow:0 0 0 8px rgba(0,230,118,.3),0 0 28px #00e676,0 3px 10px rgba(0,0,0,.45)}
+  0%,100%{filter:drop-shadow(0 0 3px #00e676) drop-shadow(0 2px 5px rgba(0,0,0,.5))}
+  50%{filter:drop-shadow(0 0 9px #00e676) drop-shadow(0 2px 5px rgba(0,0,0,.5))}
 }
 
 /* Overlays */
