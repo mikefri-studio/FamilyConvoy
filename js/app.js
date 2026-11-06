@@ -368,9 +368,7 @@ $('#btn-exit-driver').onclick = () => {
   document.body.classList.remove('driver');
   if (screen.orientation && screen.orientation.unlock) screen.orientation.unlock();
 };
-$('#btn-center-me').onclick = () => {
-  const { driverMap } = { driverMap: window.__dm }; // placeholder inutile — voir ci-dessous
-};
+
 // (le vrai binding est fait juste après, via import dynamique simple)
 import * as MAP from './map.js';
 $('#btn-center-me').onclick = () => {
