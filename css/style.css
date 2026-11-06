@@ -51,9 +51,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;o
   box-shadow:0 2px 8px rgba(0,0,0,.18);
   background-size:cover;background-position:center;
 }
-.avatar.av-txt{background:#888}                       /* initiale : badge carré coloré */
-.avatar.av-emo{background:transparent!important;box-shadow:none;font-size:26px}  /* emoji libre */
-.avatar.av-img{box-shadow:0 2px 8px rgba(0,0,0,.25)}  /* photo : carré arrondi */
+.avatar.av-txt{background:#888}
+.avatar.av-emo{background:transparent!important;box-shadow:none;font-size:26px}
+.avatar.av-img{box-shadow:0 2px 8px rgba(0,0,0,.25)}
 
 .who{flex:1;min-width:0}
 .who .nm{font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -87,7 +87,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;o
 .map-switcher .sw-btn img{width:100%;height:100%;object-fit:cover;display:block}
 body.driver .map-switcher{display:none}
 
-/* ===== Markers : logo libre, sans rond ===== */
+/* Markers : logo libre, sans rond */
 .marker{
   width:44px;height:44px;
   border:none;background:transparent;
@@ -98,9 +98,9 @@ body.driver .map-switcher{display:none}
   transition:transform .15s;
 }
 .marker:active{transform:scale(.92)}
-.marker.av-txt{color:#fff;font-size:16px;font-weight:800}   /* initiale : badge carré coloré */
-.marker.av-emo{font-size:32px;line-height:1}                /* emoji libre, en grand */
-.marker.av-img{border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.45)}  /* photo : carré arrondi */
+.marker.av-txt{color:#fff;font-size:16px;font-weight:800}
+.marker.av-emo{font-size:32px;line-height:1}
+.marker.av-img{border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.45)}
 .marker.me{filter:drop-shadow(0 0 3px #ffeb3b) drop-shadow(0 0 7px #1a73e8) drop-shadow(0 2px 5px rgba(0,0,0,.5))}
 .marker.ghost{opacity:.55}
 .marker.followed{animation:pulseFollow 2s infinite}
@@ -127,6 +127,9 @@ body.driver .map-switcher{display:none}
 .hidden{display:none!important}
 #qr-box{display:flex;justify-content:center;margin:16px 0}
 #qr-box img,#qr-box canvas{border-radius:12px;background:#fff;padding:8px}
+
+/* Voix sélectionnée active dans l'overlay */
+#voice-list .row.followed{box-shadow:inset 3px 0 0 var(--accent);background:rgba(26,115,232,.08)}
 
 /* Personnalisation */
 .emoji-grid{display:grid;grid-template-columns:repeat(8,1fr);gap:6px;margin-top:6px}
