@@ -32,18 +32,35 @@ function fileToDataURL(file, size, quality){
 }
 
 // ----- Rendu d'un avatar sur un élément (marker ou liste) -----
+// Gère 3 modes : photo (.av-img), emoji (.av-emo), initiale (.av-txt)
+// Aucun rond : fond transparent pour emoji, couleur unie pour initiale, image pour photo
 export function applyAvatarToEl(el, id, v){
   const cached = S.avatarCache[id];
   const wantImg = v.hasAvatar && cached && cached.data && cached.ts >= (v.avatarTs||0);
-  const key = wantImg ? 'i'+cached.ts : (v.emoji || '') + '|' + initialOf(v.name);
+  const mode = wantImg ? 'img' : (v.emoji ? 'emo' : 'txt');
+  const key = mode + (wantImg ? cached.ts : (v.emoji||'') + (v.color||''));
   if (el.dataset.av === key) return;
   el.dataset.av = key;
-  if (wantImg){
+
+  // Réinitialise les classes de mode
+  el.classList.remove('av-img','av-emo','av-txt');
+  el.classList.add('av-' + mode);
+
+  if (mode === 'img'){
+    // Photo : carré arrondi, background-image
+    el.style.background = '';
     el.style.backgroundImage = `url(${cached.data})`;
     el.textContent = '';
-  } else {
+  } else if (mode === 'emo'){
+    // Emoji : fond transparent, texte en grand (32 px sur marker, 26 px sur liste)
+    el.style.background = '';
     el.style.backgroundImage = '';
-    el.textContent = v.emoji || initialOf(v.name);
+    el.textContent = v.emoji;
+  } else {
+    // Initiale : badge carré coloré
+    el.style.background = v.color || colorFor(id) || '#888';
+    el.style.backgroundImage = '';
+    el.textContent = initialOf(v.name);
   }
 }
 
@@ -83,7 +100,7 @@ export async function uploadMyPhoto(file){
   S.avatarCache[me.id] = { ts: me.avatarTs, data };
   localStorage.setItem(`fc_av_${me.group}_${me.id}`, JSON.stringify(S.avatarCache[me.id]));
   await R.update(R.ref(db, `convoy/${me.group}/members/${me.id}`), { hasAvatar:true, avatarTs: me.avatarTs });
-  pushAlert(' Photo appliquée !','success');
+  pushAlert('📷 Photo appliquée !','success');
   refreshPreviews(); bus.emit('render');
 }
 export async function removeMyPhoto(){
