@@ -1,21 +1,22 @@
 // ============================================================
-// APP : assemblage — GPS, partage Firebase, alertes, routes,
-//       événements, démarrage. Point d'entrée du module.
+// APP v2 : assemblage — GPS, Firebase, voix, événements
+// Imports alignés sur notify.js v5
 // ============================================================
 import { MAP_STYLES, TESLA_WORKER_URL } from './config.js';
 import { $, haversineKm, bearingDeg, ago, freshDev, colorFor, bus } from './utils.js';
 import { S, me, getAll } from './state.js';
 import { pushAlert, speak, updateStatus, updateRoleUI,
-         listFrenchVoices, setPreferredVoice, getPreferredVoiceName, testVoice } from './notify.js';
+         listVoiceOptions, setVoiceChoice, getVoiceChoice, testVoice } from './notify.js';
 import { R, db } from './db.js';
-import { bindAvatarUI, openAvatarOverlay, loadEmblem, applyEmblem } from './avatar.js';
+import { bindAvatarUI, openAvatarOverlay, loadEmblem } from './avatar.js';
 import { initMaps, initDriverMap, playReplay, closeReplay } from './map.js';
 import { render, updateFollowPill, bindCoreUI, autoNight } from './ui.js';
 import { tripTick, endTrip, resumeTrip, pruneHistory, bindHistoryUI } from './trips.js';
 import { bindRadio, playRadio } from './radio.js';
+import * as MAP from './map.js';
 
 // ============================================================
-//  GPS + réseau + batterie + wake lock
+// 📍 GPS + réseau + batterie + wake lock
 // ============================================================
 function startGPS(){
   if (!navigator.geolocation){ $('#status').textContent='GPS non supporté'; return; }
@@ -56,7 +57,7 @@ document.addEventListener('visibilitychange', () => {
 });
 
 // ============================================================
-// 📡 Partage Firebase (rôles gps/screen, envoi 5 s)
+// 📡 Partage Firebase
 // ============================================================
 function setRole(r, silent){
   if (me.role === r || !S.refs.myRef) return;
@@ -305,10 +306,8 @@ if (TESLA_WORKER_URL) {
 }
 
 // ============================================================
-// 🎮 Événements globaux (menu, conduite, follow, replay…)
+// 🎮 Événements globaux
 // ============================================================
-import * as MAP from './map.js';
-
 function toggleFollow(id){
   if (S.followId === id) S.followId = null;
   else {
@@ -382,69 +381,6 @@ $('#btn-center-me').onclick = () => {
 $('#btn-replay-play').onclick = playReplay;
 $('#btn-replay-close').onclick = closeReplay;
 
-// ============================================================
-// 🎤 Sélecteur de voix française
-// ============================================================
-function openVoiceOverlay(){
-  const list = $('#voice-list');
-  const voices = listFrenchVoices();
-  const current = getPreferredVoiceName();
-  if (!voices.length){
-    list.innerHTML = '<div class="row"><span>⚠️ Aucune voix française détectée sur cet appareil. Essaie d\'installer un pack vocal dans les paramètres système.</span></div>';
-  } else {
-    list.innerHTML = voices.map(v => {
-      const isActive = v.name === current;
-      const badge = v.localService ? '📱 offline' : '☁️ en ligne';
-      return `<div class="row ${isActive?'followed':''}" data-voice="${v.name.replace(/"/g,'&quot;')}">
-        <div class="avatar" style="background:var(--accent);border-radius:12px">🎤</div>
-        <div class="who">
-          <div class="nm">${v.name}</div>
-          <div class="sub">${v.lang} · ${badge}</div>
-        </div>
-        <div class="rt"><div class="dst">${isActive?'✓ actif':''}</div></div>
-      </div>`;
-    }).join('');
-  }
-  $('#voice-overlay').classList.remove('hidden');
-}
-
-// Le comportement du bouton voix du dock (remplace celui défini dans ui.js)
-$('#btn-voice').onclick = () => {
-  S.voiceOn = !S.voiceOn;
-  $('#btn-voice').querySelector('.ico').textContent = S.voiceOn ? '🔊' : '🔇';
-  $('#btn-voice').classList.toggle('active', S.voiceOn);
-  if (S.voiceOn) {
-    // Double-tap rapide = ouvrir le sélecteur
-    if (window.__voiceTap && Date.now() - window.__voiceTap < 400) {
-      openVoiceOverlay();
-    }
-    window.__voiceTap = Date.now();
-  }
-};
-
-// Appui long = ouvrir le sélecteur
-let voicePressTimer = null;
-$('#btn-voice').addEventListener('pointerdown', () => {
-  voicePressTimer = setTimeout(openVoiceOverlay, 600);
-});
-$('#btn-voice').addEventListener('pointerup', () => clearTimeout(voicePressTimer));
-$('#btn-voice').addEventListener('pointercancel', () => clearTimeout(voicePressTimer));
-
-$('#voice-list').addEventListener('click', e => {
-  const row = e.target.closest('.row[data-voice]');
-  if (!row) return;
-  setPreferredVoice(row.dataset.voice);
-  testVoice();
-  openVoiceOverlay();
-});
-$('#btn-test-voice').onclick = testVoice;
-$('#btn-voice-reset').onclick = () => {
-  setPreferredVoice('');
-  testVoice();
-  openVoiceOverlay();
-};
-$('#btn-close-voice').onclick = () => $('#voice-overlay').classList.add('hidden');
-
 // QR / invitation
 function openShare(mode){
   if (!me.group) { pushAlert('Rejoins d\'abord un convoi','info'); return; }
@@ -466,10 +402,59 @@ $('#btn-copy').onclick = () => navigator.clipboard.writeText(S.shareLink).then((
 $('#btn-close-share').onclick = () => $('#share-overlay').classList.add('hidden');
 
 // ============================================================
+// 🎤 Voix : bouton du dock + overlay de choix
+// ============================================================
+function openVoiceOverlay(){
+  const list = $('#voice-list');
+  const options = listVoiceOptions();
+  const current = getVoiceChoice();
+  if (!options.length){
+    list.innerHTML = '<div class="row"><span>⚠️ Aucune voix détectée sur cet appareil.</span></div>';
+  } else {
+    list.innerHTML = options.map(o => {
+      const isActive = o.id === current;
+      return `<div class="row ${isActive?'followed':''}" data-voice="${o.id.replace(/"/g,'&quot;')}">
+        <div class="avatar" style="background:var(--accent);border-radius:12px">${o.icon || '🎤'}</div>
+        <div class="who">
+          <div class="nm">${o.name}</div>
+          <div class="sub">${o.sub}</div>
+        </div>
+        <div class="rt"><div class="dst">${isActive?'✓ actif':''}</div></div>
+      </div>`;
+    }).join('');
+  }
+  $('#voice-overlay').classList.remove('hidden');
+}
+function bindVoiceUI(){
+  $('#btn-voice').onclick = () => {
+    S.voiceOn = !S.voiceOn;
+    $('#btn-voice').querySelector('.ico').textContent = S.voiceOn ? '🔊' : '🔇';
+    $('#btn-voice').classList.toggle('active', S.voiceOn);
+    if (S.voiceOn && window.__voiceTap && Date.now() - window.__voiceTap < 400) openVoiceOverlay();
+    if (S.voiceOn) window.__voiceTap = Date.now();
+  };
+  let voicePressTimer = null;
+  $('#btn-voice').addEventListener('pointerdown', () => { voicePressTimer = setTimeout(openVoiceOverlay, 600); });
+  $('#btn-voice').addEventListener('pointerup', () => clearTimeout(voicePressTimer));
+  $('#btn-voice').addEventListener('pointercancel', () => clearTimeout(voicePressTimer));
+
+  $('#voice-list').addEventListener('click', e => {
+    const row = e.target.closest('.row[data-voice]');
+    if (!row) return;
+    setVoiceChoice(row.dataset.voice);
+    testVoice();
+    openVoiceOverlay();
+  });
+  $('#btn-test-voice').onclick = testVoice;
+  $('#btn-voice-reset').onclick = () => { setVoiceChoice(''); testVoice(); openVoiceOverlay(); };
+  $('#btn-close-voice').onclick = () => $('#voice-overlay').classList.add('hidden');
+}
+
+// ============================================================
 // 📲 Service worker PWA
 // ============================================================
 const SW_CODE = `
-const CACHE = 'fc-v16';
+const CACHE = 'fc-v18';
 self.addEventListener('install', e => { self.skipWaiting(); });
 self.addEventListener('activate', e => { e.waitUntil(self.clients.claim()); });
 self.addEventListener('fetch', e => {
@@ -498,6 +483,7 @@ autoNight();
 
 initMaps();
 bindCoreUI();
+bindVoiceUI();
 bindAvatarUI();
 bindRadio();
 bindHistoryUI();
