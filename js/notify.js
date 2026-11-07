@@ -27,14 +27,20 @@ let voiceChoice = localStorage.getItem('fc_voice') || '';
 let elevenlabsQuota = parseInt(localStorage.getItem('fc_elevenlabs_quota') || '10000');
 
 const ELEVENLABS_VOICES = [
-  { id:'eleven:Rachel', name:'Rachel ⭐', sub:'ElevenLabs · qualité studio · 10k car/mois', icon:'⭐', voiceId:'21m00Tcm4TlvDq8ikWAM' },
-  { id:'eleven:Domi', name:'Domi ⭐', sub:'ElevenLabs · masculine', icon:'⭐', voiceId:'AZnzlk1XvdvUeBnXmlld' },
-  { id:'eleven:Bella', name:'Bella ⭐', sub:'ElevenLabs · féminine douce', icon:'⭐', voiceId:'EXAVITQu4vr4xnSDxMaL' }
+  { id:'eleven:Rachel', name:'Rachel ⭐', sub:'ElevenLabs · féminine naturelle', icon:'⭐', voiceId:'21m00Tcm4TlvDq8ikWAM' },
+  { id:'eleven:Domi', name:'Domi ⭐', sub:'ElevenLabs · masculine posée', icon:'⭐', voiceId:'AZnzlk1XvdvUeBnXmlld' },
+  { id:'eleven:Bella', name:'Bella ⭐', sub:'ElevenLabs · féminine douce', icon:'⭐', voiceId:'EXAVITQu4vr4xnSDxMaL' },
+  { id:'eleven:Antoni', name:'Antoni ⭐', sub:'ElevenLabs · masculine chaleureuse', icon:'⭐', voiceId:'ErXwobaYiN019PkySvjV' },
+  { id:'eleven:Adam', name:'Adam ⭐', sub:'ElevenLabs · masculine profonde (style GPS)', icon:'⭐', voiceId:'pNInz6obbf5AWCGqNKO0' },
+  { id:'eleven:Charlotte', name:'Charlotte ⭐', sub:'ElevenLabs · féminine énergique', icon:'⭐', voiceId:'XB0fDUnXU5powFXDhCwa' }
 ];
 
 export function listVoiceOptions(){
   if (!voicesLoaded) loadVoices();
-  const eleven = ELEVENLABS_API_KEY && elevenlabsQuota > 0 ? ELEVENLABS_VOICES : [];
+  // Vérifie que la clé n'est pas le placeholder 'sk_...'
+  const isKeyValid = ELEVENLABS_API_KEY && ELEVENLABS_API_KEY !== 'sk_...';
+  const eleven = isKeyValid && elevenlabsQuota > 0 ? ELEVENLABS_VOICES : [];
+  
   return [
     ...eleven,
     ...frVoices.map(v => {
@@ -54,7 +60,7 @@ export function setVoiceChoice(id){
   if (id) localStorage.setItem('fc_voice', id); else localStorage.removeItem('fc_voice');
 }
 
-// ---------- Lecture ----------
+// ---------- Lecture audio ----------
 let currentAudio = null;
 function stopAll(){
   if (currentAudio){ try{ currentAudio.pause(); }catch(e){} currentAudio = null; }
@@ -73,7 +79,9 @@ function playBlob(blob){
 // 🌟 ElevenLabs TTS (qualité studio)
 function elevenlabsSpeak(clean, voiceId){
   return new Promise(async (resolve, reject) => {
-    if (!ELEVENLABS_API_KEY || elevenlabsQuota <= 0) return reject(new Error('quota épuisé ou clé absente'));
+    const isKeyValid = ELEVENLABS_API_KEY && ELEVENLABS_API_KEY !== 'sk_...';
+    if (!isKeyValid || elevenlabsQuota <= 0) return reject(new Error('quota épuisé ou clé absente'));
+    
     try {
       console.log('[TTS] ElevenLabs →', clean.length, 'car, quota restant:', elevenlabsQuota);
       const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
@@ -90,10 +98,12 @@ function elevenlabsSpeak(clean, voiceId){
         })
       });
       if (!res.ok) throw new Error('http ' + res.status);
+      
       const blob = await res.blob();
       elevenlabsQuota -= clean.length;
       localStorage.setItem('fc_elevenlabs_quota', elevenlabsQuota);
       console.log('[TTS] ElevenLabs OK, blob:', blob.size, 'octets');
+      
       await playBlob(blob);
       resolve();
     } catch(e) {
@@ -121,6 +131,7 @@ function pickBestVoice(){
   }).sort((a,b) => b.score - a.score);
   return scored[0].v;
 }
+
 function systemSpeak(clean){
   console.log('[TTS] fallback système');
   const u = new SpeechSynthesisUtterance(clean);
@@ -139,10 +150,13 @@ export function speak(txt){
   console.log('[TTS] speak :', clean, '| choix :', voiceChoice);
 
   const engines = [];
-  if (voiceChoice.startsWith('eleven:') && ELEVENLABS_API_KEY && elevenlabsQuota > 0){
+  const isKeyValid = ELEVENLABS_API_KEY && ELEVENLABS_API_KEY !== 'sk_...';
+  
+  if (voiceChoice.startsWith('eleven:') && isKeyValid && elevenlabsQuota > 0){
     const voice = ELEVENLABS_VOICES.find(v => v.id === voiceChoice);
     if (voice) engines.push(['eleven', () => elevenlabsSpeak(clean, voice.voiceId)]);
   }
+  // Le système est toujours en dernier recours
   engines.push(['sys', () => { systemSpeak(clean); return Promise.resolve(); }]);
 
   (async () => {
@@ -159,6 +173,7 @@ export function speak(txt){
     }
   })();
 }
+
 export function testVoice(){
   speak('Bonjour, ceci est un test de la voix sélectionnée.');
 }
