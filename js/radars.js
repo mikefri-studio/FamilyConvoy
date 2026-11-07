@@ -1,25 +1,29 @@
 // ============================================================
-// RADARS v2 : GeoJSON performant + menu de réglages complet
+// RADARS v3 : fusion CSV GitHub + Firestore RadarZen
+// + signalements communautaires en temps réel
 // ============================================================
 import { haversineKm } from './utils.js';
 import { S, me } from './state.js';
 import { pushAlert, speak } from './notify.js';
+import { getRadarzenRadars, getRadarzenReports, initRadarZen } from './radarzen.js';
 
 const RADAR_CSV_URL = 'https://raw.githubusercontent.com/mikefri-studio/RadarApp/master/app/src/main/assets/radars.csv';
 const RADAR_CACHE_KEY = 'fc_radars_cache';
 const RADAR_CACHE_TTL = 7 * 86400000;
 const RADAR_SETTINGS_KEY = 'fc_radar_settings';
+const REPORT_EXPIRY = 2 * 3600000; // 2h
 
-// Réglages par défaut
 const DEFAULT_SETTINGS = {
-  displayRadius: 25,      // km (5, 10, 25, 50, 100, 0=tous)
-  alertDist: 0.5,         // km (0.2, 0.5, 1, 2)
-  showFixed: true,        // radars fixes
-  showMobile: true,       // radars mobiles
-  alertSound: 'voice',    // 'voice', 'beep', 'both', 'silent'
-  minSpeed: 30,           // km/h (0, 30, 50, 70, 90)
-  showVMA: true,          // afficher la VMA dans le popup
-  enabled: true           // radars activés
+  displayRadius: 25,
+  alertDist: 0.5,
+  showFixed: true,
+  showMobile: true,
+  showReports: true,
+  alertSound: 'voice',
+  minSpeed: 30,
+  showVMA: true,
+  enabled: true,
+  useRadarZen: true
 };
 
 let radars = [];
@@ -29,7 +33,7 @@ let alertedRadars = new Set();
 let mainMap = null;
 let lastBeepTime = 0;
 
-// Charger les réglages
+// ---------- Réglages ----------
 function loadSettings(){
   try {
     const saved = localStorage.getItem(RADAR_SETTINGS_KEY);
@@ -40,10 +44,9 @@ export function getSettings(){ return settings; }
 export function saveSettings(newSettings){
   settings = { ...settings, ...newSettings };
   localStorage.setItem(RADAR_SETTINGS_KEY, JSON.stringify(settings));
-  updateRadarLayer(); // rafraîchit l'affichage
 }
 
-// Parse le CSV
+// ---------- Parse CSV ----------
 function parseCSV(text){
   const lines = text.trim().split('\n');
   if (lines.length < 2) return [];
@@ -54,44 +57,77 @@ function parseCSV(text){
     const lng = parseFloat(cols[5].replace(',', '.'));
     if (isNaN(lat) || isNaN(lng)) return null;
     return {
-      id: cols[0].trim(),
+      id: 'csv_' + cols[0].trim(),
       type: cols[1].trim(),
       date: cols[2].trim(),
       vma: parseInt(cols[3]) || null,
       lat, lng,
-      isMobile: /mobile|portable|remorqu|feux/i.test(cols[1])
+      isMobile: /mobile|portable|remorqu|feux/i.test(cols[1]),
+      isReport: false,
+      source: 'csv'
     };
   }).filter(Boolean);
 }
 
-// Charger le CSV
+// ---------- Chargement ----------
 export async function loadRadars(){
   loadSettings();
+  
+  // Charge RadarZen en parallèle
+  if (settings.useRadarZen) await initRadarZen();
+
+  // Charge CSV GitHub (cache 7 jours)
   const cached = localStorage.getItem(RADAR_CACHE_KEY);
   if (cached){
     const { ts, data } = JSON.parse(cached);
     if (Date.now() - ts < RADAR_CACHE_TTL){
       radars = data;
-      buildGeoJSON();
-      console.log('[Radars] cache :', radars.length);
-      return;
+    } else {
+      await downloadCSV();
+    }
+  } else {
+    await downloadCSV();
+  }
+
+  // Fusion avec RadarZen
+  if (settings.useRadarZen){
+    const rzRadars = getRadarzenRadars();
+    const rzReports = getRadarzenReports();
+    
+    const existingCoords = new Set(radars.map(r => `${r.lat.toFixed(4)},${r.lng.toFixed(4)}`));
+    for (const r of rzRadars){
+      const key = `${r.lat.toFixed(4)},${r.lng.toFixed(4)}`;
+      if (!existingCoords.has(key)){
+        radars.push(r);
+        existingCoords.add(key);
+      }
+    }
+    for (const r of rzReports){
+      radars.push(r);
     }
   }
+
+  buildGeoJSON();
+  console.log('[Radars] total :', radars.length);
+}
+
+async function downloadCSV(){
   try {
     const res = await fetch(RADAR_CSV_URL);
     if (!res.ok) throw new Error('http ' + res.status);
     const text = await res.text();
     radars = parseCSV(text);
     localStorage.setItem(RADAR_CACHE_KEY, JSON.stringify({ ts: Date.now(), data: radars }));
-    buildGeoJSON();
-    console.log('[Radars] téléchargés :', radars.length);
+    console.log('[Radars] CSV téléchargés :', radars.length);
   } catch(e){
-    console.error('[Radars] erreur :', e.message);
-    if (cached) { radars = JSON.parse(cached).data; buildGeoJSON(); }
+    console.error('[Radars] erreur CSV :', e.message);
+    if (localStorage.getItem(RADAR_CACHE_KEY)){
+      radars = JSON.parse(localStorage.getItem(RADAR_CACHE_KEY)).data;
+    }
   }
 }
 
-// Construit le GeoJSON une seule fois
+// ---------- GeoJSON ----------
 function buildGeoJSON(){
   radarGeoJSON = {
     type: 'FeatureCollection',
@@ -99,25 +135,32 @@ function buildGeoJSON(){
       type: 'Feature',
       properties: {
         id: r.id,
-        type: r.type,
-        vma: r.vma,
-        date: r.date,
-        isMobile: r.isMobile ? 1 : 0
+        type: r.type || '',
+        vma: r.vma || null,
+        date: r.date || '',
+        isMobile: r.isMobile ? 1 : 0,
+        isReport: r.isReport ? 1 : 0,
+        description: r.description || '',
+        timestamp: r.timestamp || 0,
+        numero: r.numero || ''
       },
       geometry: { type: 'Point', coordinates: [r.lng, r.lat] }
     }))
   };
 }
 
-// Expose la carte
 export function setMainMap(map){ mainMap = map; }
 
-// Filtre les radars selon les réglages
 function getFilteredRadars(){
   if (!radars.length) return [];
   return radars.filter(r => {
-    if (r.isMobile && !settings.showMobile) return false;
-    if (!r.isMobile && !settings.showFixed) return false;
+    if (r.isReport){
+      if (!settings.showReports) return false;
+      if (Date.now() - r.timestamp > REPORT_EXPIRY) return false;
+    } else {
+      if (r.isMobile && !settings.showMobile) return false;
+      if (!r.isMobile && !settings.showFixed) return false;
+    }
     if (settings.displayRadius > 0 && me.lat != null){
       if (haversineKm(me.lat, me.lng, r.lat, r.lng) > settings.displayRadius) return false;
     }
@@ -125,57 +168,64 @@ function getFilteredRadars(){
   });
 }
 
-// Met à jour la couche GeoJSON sur la carte
 export function updateRadarLayer(){
   if (!mainMap || !radarGeoJSON) return;
   const source = mainMap.getSource('radars');
   if (!source) return;
 
   const filtered = getFilteredRadars();
+  const filteredIds = new Set(filtered.map(r => r.id));
   const fc = {
     type: 'FeatureCollection',
-    features: radarGeoJSON.features.filter(f => filtered.some(r => r.id === f.properties.id))
+    features: radarGeoJSON.features.filter(f => filteredIds.has(f.properties.id))
   };
   source.setData(fc);
-
-  // Met à jour le filtre du layer (couleur selon type)
-  if (mainMap.getLayer('radar-circles')){
-    mainMap.setPaintProperty('radar-circles', 'circle-color', [
-      'case', ['==', ['get', 'isMobile'], 1], '#ff5252', '#ff9800'
-    ]);
-  }
 }
 
-// Alerte vocale + visuelle
+// ---------- Alertes ----------
 export function checkRadarAlert(){
   if (!settings.enabled || me.lat == null || !S.joined) return;
-  if (me.speed < settings.minSpeed) return; // ne pas alerter si trop lent
+  if (me.speed < settings.minSpeed) return;
 
   const close = radars.filter(r => {
-    if (r.isMobile && !settings.showMobile) return false;
-    if (!r.isMobile && !settings.showFixed) return false;
+    if (r.isReport && !settings.showReports) return false;
+    if (!r.isReport && r.isMobile && !settings.showMobile) return false;
+    if (!r.isReport && !r.isMobile && !settings.showFixed) return false;
+    if (r.isReport && Date.now() - r.timestamp > REPORT_EXPIRY) return false;
     return haversineKm(me.lat, me.lng, r.lat, r.lng) <= settings.alertDist;
   });
 
   for (const r of close){
     if (alertedRadars.has(r.id)) continue;
     alertedRadars.add(r.id);
-    const type = r.isMobile ? 'mobile' : 'fixe';
-    const vma = r.vma ? ` ${r.vma} km/h` : '';
-    const dist = Math.round(haversineKm(me.lat, me.lng, r.lat, r.lng) * 1000);
-    const msg = `⚠️ Radar ${type}${vma} à ${dist}m`;
+    
+    let msg = '';
+    if (r.isReport){
+      const typeLabel = {
+        accident: '🚗 Accident', travaux: '🚧 Travaux',
+        radar_mobile: '🚨 Radar mobile', danger: '⚠️ Danger',
+        bouchon: '🐌 Bouchon', autre: '❓ Autre'
+      }[r.type] || '📍 Signalement';
+      msg = `${typeLabel} à ${Math.round(haversineKm(me.lat, me.lng, r.lat, r.lng) * 1000)}m`;
+      speak(`Signalement ${r.type} à proximité`);
+    } else {
+      const type = r.isMobile ? 'mobile' : 'fixe';
+      const vma = r.vma ? ` ${r.vma} km/h` : '';
+      const dist = Math.round(haversineKm(me.lat, me.lng, r.lat, r.lng) * 1000);
+      msg = `⚠️ Radar ${type}${vma} à ${dist}m`;
+      speak(`Radar ${type} à ${dist} mètres`);
+    }
 
     if (settings.alertSound === 'voice' || settings.alertSound === 'both'){
       pushAlert(msg, 'warn', 8000);
-      speak(`Radar ${type} à ${dist} mètres`);
     } else if (settings.alertSound === 'beep'){
       pushAlert(msg, 'warn', 8000);
       playBeep();
+    } else {
+      pushAlert(msg, 'warn', 8000);
     }
-    // 'silent' = juste l'alerte visuelle
   }
 
-  // Reset quand on s'éloigne
   alertedRadars = new Set(
     [...alertedRadars].filter(id => {
       const r = radars.find(x => x.id === id);
@@ -184,10 +234,9 @@ export function checkRadarAlert(){
   );
 }
 
-// Bip sonore
 function playBeep(){
   const now = Date.now();
-  if (now - lastBeepTime < 2000) return; // anti-spam
+  if (now - lastBeepTime < 2000) return;
   lastBeepTime = now;
   try {
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -201,7 +250,6 @@ function playBeep(){
   } catch(e){}
 }
 
-// Toggle on/off
 export function toggleRadars(){
   settings.enabled = !settings.enabled;
   saveSettings({ enabled: settings.enabled });
@@ -209,7 +257,7 @@ export function toggleRadars(){
 }
 export function isRadarsEnabled(){ return settings.enabled; }
 
-// Initialise la couche GeoJSON sur la carte
+// ---------- Couche GeoJSON ----------
 export function initRadarLayer(){
   if (!mainMap) return;
   mainMap.addSource('radars', { type: 'geojson', data: { type:'FeatureCollection', features:[] } });
@@ -218,9 +266,14 @@ export function initRadarLayer(){
     type: 'circle',
     source: 'radars',
     paint: {
-      'circle-radius': 8,
-      'circle-color': ['case', ['==', ['get', 'isMobile'], 1], '#ff5252', '#ff9800'],
-      'circle-opacity': 0.85,
+      'circle-radius': 9,
+      'circle-color': [
+        'case',
+        ['==', ['get', 'isReport'], 1], '#2196f3',
+        ['==', ['get', 'isMobile'], 1], '#ff5252',
+        '#ff9800'
+      ],
+      'circle-opacity': 0.9,
       'circle-stroke-width': 2,
       'circle-stroke-color': '#fff'
     }
@@ -230,21 +283,33 @@ export function initRadarLayer(){
     type: 'symbol',
     source: 'radars',
     layout: {
-      'text-field': ['case', ['==', ['get', 'isMobile'], 1], '🚨', '📷'],
+      'text-field': [
+        'case',
+        ['==', ['get', 'isReport'], 1], '📍',
+        ['==', ['get', 'isMobile'], 1], '🚨',
+        '📷'
+      ],
       'text-size': 14,
-      'text-offset': [0, -1.2]
+      'text-offset': [0, -1.3]
     }
   });
 
-  // Popup au clic
   mainMap.on('click', 'radar-circles', (e) => {
     const p = e.features[0].properties;
-    const type = p.isMobile ? '🚨 Mobile' : '📷 Fixe';
-    const vma = p.vma ? ` · ${p.vma} km/h` : '';
-    new maplibregl.Popup()
-      .setLngLat(e.lngLat)
-      .setHTML(`<b>${type}</b><br>ID: ${p.id}${vma}<br><small>Mis en service: ${p.date}</small>`)
-      .addTo(mainMap);
+    let html = '';
+    if (p.isReport){
+      const typeLabel = {
+        accident: '🚗 Accident', travaux: '🚧 Travaux',
+        radar_mobile: '🚨 Radar mobile', danger: '⚠️ Danger',
+        bouchon: '🐌 Bouchon', autre: '❓ Autre'
+      }[p.type] || '📍 Signalement';
+      html = `<b>${typeLabel}</b><br><small>${p.description || 'Aucune description'}<br>il y a ${Math.round((Date.now()-p.timestamp)/60000)} min</small>`;
+    } else {
+      const type = p.isMobile ? '🚨 Mobile' : '📷 Fixe';
+      const vma = p.vma ? ` · ${p.vma} km/h` : '';
+      html = `<b>${type}</b><br>ID: ${p.numero || p.id}${vma}<br><small>Mis en service: ${p.date}</small>`;
+    }
+    new maplibregl.Popup().setLngLat(e.lngLat).setHTML(html).addTo(mainMap);
   });
   mainMap.on('mouseenter', 'radar-circles', () => { mainMap.getCanvas().style.cursor = 'pointer'; });
   mainMap.on('mouseleave', 'radar-circles', () => { mainMap.getCanvas().style.cursor = ''; });
