@@ -7,6 +7,7 @@ import { S, me, getAll } from './state.js';
 import { $, haversineKm, ago, bus } from './utils.js';
 import { pushAlert } from './notify.js';
 import { applyAvatarToEl } from './avatar.js';
+import { setMainMap } from './radars.js';
 
 export let map = null, driverMap = null, replayMap = null;
 let replayMarker = null, replayRAF = null, replayPts = [];
@@ -22,6 +23,7 @@ function injectTrailsLayer(m, sourceName, layerName){
 export function initMaps(){
   map = new maplibregl.Map({ container:'map', style: MAP_STYLES[S.currentStyle], center:[2.35,48.85], zoom:5 });
   map.addControl(new maplibregl.NavigationControl({showCompass:false}),'bottom-right');
+  setMainMap(map); // ⬅️ Expose la carte aux radars
   map.on('style.load', () => { injectTrailsLayer(map, 'trails', 'trail-lines'); bus.emit('render'); });
   map.on('load', () => injectTrailsLayer(map, 'trails', 'trail-lines'));
   map.on('dragstart', () => { if (S.followId) { S.followId = null; bus.emit('follow-stop'); } });
@@ -49,7 +51,6 @@ function makeMarkerEl(id, v){
   return el;
 }
 
-// Marqueurs + tracés + bounds + follow (appelé par ui.render)
 export function updateMapVisuals(all){
   for (const [id, v] of Object.entries(all)) {
     if (v.lat == null) continue;
@@ -105,7 +106,6 @@ export function updateMapVisuals(all){
   }
 }
 
-// ----- Mode conduite -----
 export function initDriverMap(){
   if (!driverMap) {
     driverMap = new maplibregl.Map({
@@ -119,7 +119,6 @@ export function initDriverMap(){
   } else setTimeout(()=> driverMap.resize(), 50);
 }
 
-// ----- Replay -----
 function setReplayLine(coords){
   if (replayMap && replayMap.getSource('replay-line'))
     replayMap.getSource('replay-line').setData({ type:'Feature', geometry:{ type:'LineString', coordinates:coords } });
