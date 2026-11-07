@@ -1,8 +1,6 @@
 // ============================================================
 // RADARZEN : connexion à Firestore (radars + signalements)
-// Projet séparé : radarzen-ae2bb
 // ============================================================
-import { haversineKm } from './utils.js';
 import { S, me } from './state.js';
 
 const RADARZEN_CONFIG = {
@@ -19,13 +17,12 @@ let radarzenRadars = [];
 let radarzenReports = [];
 let radarzenLoaded = false;
 
-// Initialise Firebase (projet RadarZen)
 async function initRadarZen(){
   if (db2) return;
   try {
     const { initializeApp } = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js');
     const { getFirestore, collection, getDocs } = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js');
-    const app2 = initializeApp(RADARZEN_CONFIG, 'radarzen'); // nom unique pour éviter conflit
+    const app2 = initializeApp(RADARZEN_CONFIG, 'radarzen');
     db2 = getFirestore(app2);
     await loadRadarZenData(collection, getDocs);
   } catch(e){
@@ -33,10 +30,8 @@ async function initRadarZen(){
   }
 }
 
-// Charge radars + reports
 async function loadRadarZenData(collection, getDocs){
   try {
-    // Radars officiels
     const radarsSnap = await getDocs(collection(db2, 'radars'));
     radarzenRadars = radarsSnap.docs.map(doc => {
       const d = doc.data();
@@ -49,11 +44,11 @@ async function loadRadarZenData(collection, getDocs){
         lng: d['Longitude'],
         numero: d['Numero de radar'] || '',
         isMobile: /mobile|portable|remorqu/i.test(d['Type de radar'] || ''),
+        isReport: false,
         source: 'radarzen'
       };
     }).filter(r => r.lat && r.lng);
 
-    // Signalements communautaires
     const reportsSnap = await getDocs(collection(db2, 'reports'));
     radarzenReports = reportsSnap.docs.map(doc => {
       const d = doc.data();
@@ -61,8 +56,8 @@ async function loadRadarZenData(collection, getDocs){
         id: 'rp_' + doc.id,
         type: d['type'] || 'autre',
         description: d['description'] || '',
-        lat: d['lat'] || d['Latitude'],
-        lng: d['lng'] || d['Longitude'],
+        lat: d['lat'],
+        lng: d['lng'],
         timestamp: d['timestamp'] || Date.now(),
         userId: d['userId'] || '',
         isReport: true,
@@ -77,21 +72,22 @@ async function loadRadarZenData(collection, getDocs){
   }
 }
 
-// Ajoute un signalement
 export async function addReport(type, description){
   if (!db2 || !me.lat) return false;
   try {
     const { collection, addDoc } = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js');
     await addDoc(collection(db2, 'reports'), {
       type,
-      description,
+      description: description || '',
       lat: me.lat,
-      lng: me.lng,
+      lng: me.lng, // ⬅️ 'lng' pour matcher les règles
       timestamp: Date.now(),
       userId: me.id,
-      userName: me.name
+      userName: me.name,
+      confirmations: 1,  // ⬅️ Requis par les règles
+      dismissals: 0      // ⬅️ Requis par les règles
     });
-    console.log('[RadarZen] report ajouté');
+    console.log('[RadarZen] report ajouté avec succès');
     return true;
   } catch(e){
     console.error('[RadarZen] ajout report erreur :', e.message);
@@ -99,7 +95,6 @@ export async function addReport(type, description){
   }
 }
 
-// Getters
 export function getRadarzenRadars(){ return radarzenRadars; }
 export function getRadarzenReports(){ return radarzenReports; }
 export function isRadarZenLoaded(){ return radarzenLoaded; }
