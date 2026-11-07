@@ -44,8 +44,7 @@ export const EMOJIS = ['🚗','','🚕','️','🚌','','️','','','⛄','','',
 
 export const PALETTE = ['#e53935','#8e24aa','#3949ab','#00897b','#f4511e','#6d4c41','#d81b60','#1e88e5'];
 
-// ... (le reste de ton code)
-export const PALETTE = ['#e53935','#8e24aa','#3949ab','#00897b','#f4511e','#6d4c41','#d81b60','#1e88e5'];
+
 
 // ============================================================
 // ELEVENLABS TTS (Qualité studio)
