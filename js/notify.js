@@ -27,7 +27,7 @@ let voiceChoice = localStorage.getItem('fc_voice') || '';
 let elevenlabsQuota = parseInt(localStorage.getItem('fc_elevenlabs_quota') || '10000');
 
 const ELEVENLABS_VOICES = [
-  { id:'eleven:Rachel', name:'Adaml ⭐', sub:'ElevenLabs · masculine chaleureuse', icon:'⭐', voiceId:'TGAegA0zNRi8I6nUdq3i' },
+  { id:'eleven:Rachel', name:'Greg ⭐', sub:'ElevenLabs · masculine chaleureuse', icon:'⭐', voiceId:'OOiDJrD1goukqfTpiySr' },
   { id:'eleven:Domi', name:'Guillaume ⭐', sub:'ElevenLabs · masculine posée', icon:'⭐', voiceId:'Qrl71rx6Yg8RvyPYRGCQ' },
   { id:'eleven:Bella', name:'Bella ⭐', sub:'ElevenLabs · féminine douce', icon:'⭐', voiceId:'EXAVITQu4vr4xnSDxMaL' },
   { id:'eleven:Antoni', name:'Antoni ⭐', sub:'ElevenLabs · masculine chaleureuse', icon:'⭐', voiceId:'ErXwobaYiN019PkySvjV' },
