@@ -1,6 +1,5 @@
 // ============================================================
-// MAP : les 3 cartes (principale, conduite, replay),
-//       switcher de styles, marqueurs, tracés, replay animé
+// MAP : les 3 cartes, switcher, marqueurs, tracés, replay
 // ============================================================
 import { MAP_STYLES, STYLE_LABELS } from './config.js';
 import { S, me, getAll } from './state.js';
@@ -25,15 +24,13 @@ export function initMaps(){
   map.addControl(new maplibregl.NavigationControl({showCompass:false}),'bottom-right');
   setMainMap(map);
 
-  map.on('style.load', () => {
-    injectTrailsLayer(map, 'trails', 'trail-lines');
-    initRadarLayer(); // ⬅️ Initialise la couche radars
-    bus.emit('render');
-  });
+  // ⬅️ CORRECTION : initRadarLayer() uniquement ici, pas dans style.load
   map.on('load', () => {
     injectTrailsLayer(map, 'trails', 'trail-lines');
-    initRadarLayer();
+    initRadarLayer(); 
+    bus.emit('render');
   });
+  
   map.on('dragstart', () => { if (S.followId) { S.followId = null; bus.emit('follow-stop'); } });
 
   document.querySelectorAll('.sw-btn').forEach(btn => {
