@@ -1,5 +1,6 @@
 // ============================================================
 // STATE : état global mutable + liste unifiée des membres
+// Avec fusion visuelle des membres ayant le même nom
 // ============================================================
 import { freshDev, colorFor } from './utils.js';
 
@@ -26,21 +27,59 @@ export const S = {
   refs:{} // myRef, deviceRef, membersRef...
 };
 
+// ============================================================
+// getAll() avec fusion automatique des doublons de nom
+// Si 2 appareils ont le même pseudo, ils apparaissent comme 1 seul
+// membre avec le compteur 📱×2 et la position la plus récente
+// ============================================================
 export function getAll(){
   const all = {};
-  for (const [id,v] of Object.entries(S.members)){
+  const nameToId = {}; // map nom → id retenu dans all
+
+  for (const [id, v] of Object.entries(S.members)){
+    // Ignorer mon propre nœud (ajouté après) et les cachés
     if (id === me.id || v.hidden) continue;
-    const devs = Object.values(v.devices||{});
-    if (v.lat == null && !devs.some(freshDev)) continue;
-    v.devCount = devs.filter(freshDev).length;
-    v.lastSeen = Math.max(v.updatedAt||0, ...devs.map(d=>d.updatedAt||0), 0);
-    all[id] = v;
+
+    const devs = Object.values(v.devices || {});
+    const alive = v.lat != null || devs.some(freshDev);
+    if (!alive) continue;
+
+    const devCount = devs.filter(freshDev).length;
+    const lastSeen = Math.max(v.updatedAt || 0, ...devs.map(d => d.updatedAt || 0), 0);
+
+    // Fusion si un membre avec le même nom existe déjà
+    if (v.name && nameToId[v.name]) {
+      const existing = all[nameToId[v.name]];
+      // Additionne les appareils
+      existing.devCount = (existing.devCount || 1) + devCount;
+      // Garde la position la plus fraîche
+      if (lastSeen > (existing.lastSeen || 0)) {
+        existing.lastSeen = lastSeen;
+        if (v.lat != null) {
+          existing.lat = v.lat;
+          existing.lng = v.lng;
+          existing.speed = v.speed || 0;
+          existing.battery = v.battery;
+          existing.updatedAt = v.updatedAt;
+        }
+      }
+      // Garde la couleur du premier (cohérence visuelle)
+      continue;
+    }
+
+    // Premier membre avec ce nom → on le retient
+    if (v.name) nameToId[v.name] = id;
+    all[id] = { ...v, devCount, lastSeen };
   }
+
+  // Tesla (pas de fusion, noms uniques)
   Object.assign(all, S.teslaCars);
+
+  // Moi (ajouté à la fin, prioritaire)
   if (S.joined && me.lat != null){
-    const myDevs = Object.values(S.members[me.id]?.devices||{});
+    const myDevs = Object.values(S.members[me.id]?.devices || {});
     all[me.id] = {
-      name: S.hidden ? me.name+' 👻' : me.name,
+      name: S.hidden ? me.name + ' 👻' : me.name,
       lat: me.lat, lng: me.lng, speed: me.speed, battery: S.phoneBattery,
       color: me.colorChoice || colorFor(me.id),
       emoji: me.emoji, hasAvatar: me.hasAvatar, avatarTs: me.avatarTs,
