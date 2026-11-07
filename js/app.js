@@ -1,6 +1,5 @@
 // ============================================================
-// APP v2 : assemblage — GPS, Firebase, voix, événements
-// Imports alignés sur notify.js v5
+// APP v3 : assemblage — GPS, Firebase, voix, radars, événements
 // ============================================================
 import { MAP_STYLES, TESLA_WORKER_URL } from './config.js';
 import { $, haversineKm, bearingDeg, ago, freshDev, colorFor, bus } from './utils.js';
@@ -13,6 +12,7 @@ import { initMaps, initDriverMap, playReplay, closeReplay } from './map.js';
 import { render, updateFollowPill, bindCoreUI, autoNight } from './ui.js';
 import { tripTick, endTrip, resumeTrip, pruneHistory, bindHistoryUI } from './trips.js';
 import { bindRadio, playRadio } from './radio.js';
+import { loadRadars, updateRadarMarkers, checkRadarAlert, toggleRadars, isRadarsEnabled } from './radars.js';
 import * as MAP from './map.js';
 
 // ============================================================
@@ -120,6 +120,7 @@ function startSharing(){
   }).catch(()=>{});
 
   loadEmblem(me.group);
+  loadRadars(); // ⬅️ Charge les radars
   setTimeout(updateRoutes, 4000);
   updateRoleUI(); updateStatus();
   resumeTrip();
@@ -139,6 +140,9 @@ setInterval(() => {
   } else {
     R.update(S.refs.myRef, payload);
   }
+  // ⬅️ Vérifie les radars toutes les 5s
+  checkRadarAlert();
+  updateRadarMarkers();
 }, 5000);
 
 // ============================================================
@@ -357,7 +361,6 @@ $('#btn-quit').onclick = () => {
   pushAlert(`🚪 Tu as quitté ${old}`,'warn');
 };
 
-// Mode conduite
 $('#btn-driver').onclick = () => {
   S.driverMode = true;
   document.body.classList.add('driver');
@@ -377,11 +380,9 @@ $('#btn-center-me').onclick = () => {
   }
 };
 
-// Replay
 $('#btn-replay-play').onclick = playReplay;
 $('#btn-replay-close').onclick = closeReplay;
 
-// QR / invitation
 function openShare(mode){
   if (!me.group) { pushAlert('Rejoins d\'abord un convoi','info'); return; }
   S.shareLink = mode === 'pair'
@@ -402,7 +403,7 @@ $('#btn-copy').onclick = () => navigator.clipboard.writeText(S.shareLink).then((
 $('#btn-close-share').onclick = () => $('#share-overlay').classList.add('hidden');
 
 // ============================================================
-// 🎤 Voix : bouton du dock + overlay de choix
+// 🎤 Voix
 // ============================================================
 function openVoiceOverlay(){
   const list = $('#voice-list');
@@ -451,10 +452,19 @@ function bindVoiceUI(){
 }
 
 // ============================================================
+// 📷 Radars
+// ============================================================
+$('#btn-radar').onclick = () => {
+  const on = toggleRadars();
+  $('#btn-radar').classList.toggle('active', on);
+  pushAlert(on ? '📷 Radars activés' : '📷 Radars désactivés', 'info', 2000);
+};
+
+// ============================================================
 // 📲 Service worker PWA
 // ============================================================
 const SW_CODE = `
-const CACHE = 'fc-v18';
+const CACHE = 'fc-v19';
 self.addEventListener('install', e => { self.skipWaiting(); });
 self.addEventListener('activate', e => { e.waitUntil(self.clients.claim()); });
 self.addEventListener('fetch', e => {
@@ -487,6 +497,8 @@ bindVoiceUI();
 bindAvatarUI();
 bindRadio();
 bindHistoryUI();
+
+$('#btn-radar').classList.toggle('active', isRadarsEnabled());
 
 const storedName = localStorage.getItem('fc_name');
 const storedGroup = localStorage.getItem('fc_group');
