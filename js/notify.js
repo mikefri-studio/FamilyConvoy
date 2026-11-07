@@ -1,9 +1,5 @@
 // ============================================================
-// NOTIFY v5 : alertes + moteur de voix 4 étages auto-réparant
-//   🧠 edge-direct : WebSocket navigateur → Bing (meilleure qualité)
-//   🛰️ worker     : ton proxy Cloudflare (secours)
-//   ☁️ polly       : Amazon Polly via StreamElements (secours)
-//   📱 sys         : voix système (offline, dernier recours)
+// NOTIFY v5.1 : avec logs de debug pour diagnostic
 // ============================================================
 import { $ } from './utils.js';
 import { S, me } from './state.js';
@@ -12,13 +8,13 @@ import { EDGE_TTS_URL } from './config.js';
 let canVibrate = false;
 document.addEventListener('pointerdown', () => { canVibrate = true; }, { once: true });
 
-// ---------- Voix système ----------
 let frVoices = [];
 let voicesLoaded = false;
 function loadVoices(){
   const all = speechSynthesis.getVoices();
   frVoices = all.filter(v => /^fr/i.test(v.lang));
   if (frVoices.length) voicesLoaded = true;
+  console.log('[TTS] voix système FR chargées :', frVoices.map(v=>v.name));
 }
 if ('speechSynthesis' in window){
   loadVoices();
@@ -26,7 +22,6 @@ if ('speechSynthesis' in window){
   setTimeout(loadVoices, 1000);
 }
 
-// ---------- Choix de voix ----------
 let voiceChoice = localStorage.getItem('fc_voice') || '';
 
 const EDGE_VOICES = [
@@ -55,9 +50,9 @@ export function getVoiceChoice(){ return voiceChoice; }
 export function setVoiceChoice(id){
   voiceChoice = id || '';
   if (id) localStorage.setItem('fc_voice', id); else localStorage.removeItem('fc_voice');
+  console.log('[TTS] voix choisie :', voiceChoice);
 }
 
-// ---------- Protocole Edge (jeton Sec-MS-GEC) ----------
 const TOKEN = '6A5AA1D4EAFF4E9FB37E23D68491D6F4';
 const GEC_VERSION = '1-131.0.2903.86';
 async function secMsGec(){
@@ -70,7 +65,6 @@ async function secMsGec(){
 }
 const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;');
 
-// ---------- Lecture ----------
 let currentAudio = null;
 function stopAll(){
   if (currentAudio){ try{ currentAudio.pause(); }catch(e){} currentAudio = null; }
@@ -81,32 +75,38 @@ function playBlob(blob){
     const a = new Audio(URL.createObjectURL(blob));
     currentAudio = a;
     a.onended = () => { currentAudio = null; res(); };
-    a.onerror = () => { currentAudio = null; rej(new Error('audio')); };
+    a.onerror = (e) => { currentAudio = null; console.error('[TTS] audio error', e); rej(new Error('audio')); };
     a.play().catch(rej);
   });
 }
-function remoteSpeak(url){
+function remoteSpeak(url, label){
+  console.log('[TTS]', label, '→', url);
   return fetch(url)
-    .then(r => { if (!r.ok) throw new Error('http ' + r.status); return r.blob(); })
-    .then(playBlob);
+    .then(r => { 
+      console.log('[TTS]', label, 'réponse HTTP', r.status);
+      if (!r.ok) throw new Error('http ' + r.status); 
+      return r.blob(); 
+    })
+    .then(b => { console.log('[TTS]', label, 'blob reçu', b.size, 'octets'); return playBlob(b); });
 }
 
-// 🧠 WebSocket DIRECT depuis le navigateur (pas de proxy)
 function edgeDirectSpeak(clean, voice){
   return new Promise((resolve, reject) => {
     (async () => {
       let ws = null, settled = false;
       const timer = setTimeout(() => {
-        if (!settled){ settled = true; try{ ws && ws.close(); }catch(e){} reject(new Error('timeout')); }
+        if (!settled){ settled = true; try{ ws && ws.close(); }catch(e){} console.log('[TTS] edge timeout'); reject(new Error('timeout')); }
       }, 15000);
       try {
         const gec = await secMsGec();
         const url = `wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1?TrustedClientToken=${TOKEN}&Sec-MS-GEC=${gec}&Sec-MS-GEC-Version=${GEC_VERSION}`;
+        console.log('[TTS] edge WS connecting...');
         ws = new WebSocket(url);
         const chunks = [];
         const reqId = crypto.randomUUID();
         const ts = () => new Date().toISOString();
         ws.onopen = () => {
+          console.log('[TTS] edge WS ouvert');
           ws.send(
             `X-Timestamp:${ts()}\r\nContent-Type:application/json; charset=utf-8\r\nPath:speech.config\r\n\r\n` +
             `{"context":{"synthesis":{"audio":{"metadataoptions":{"sentenceBoundaryEnabled":"false","wordBoundaryEnabled":"false"},"outputFormat":"audio-24khz-48kbitrate-mono-mp3"}}}}\r\n`
@@ -123,6 +123,7 @@ function edgeDirectSpeak(clean, voice){
               if (settled) return;
               settled = true; clearTimeout(timer);
               try{ ws.close(); }catch(e){}
+              console.log('[TTS] edge terminé, chunks :', chunks.length);
               playBlob(new Blob(chunks, { type:'audio/mpeg' })).then(resolve).catch(reject);
             }
             return;
@@ -133,10 +134,12 @@ function edgeDirectSpeak(clean, voice){
           const audio = buf.slice(2 + hl);
           if (audio.length) chunks.push(audio);
         };
-        ws.onerror = () => {
+        ws.onerror = (e) => {
+          console.log('[TTS] edge WS error', e);
           if (!settled){ settled = true; clearTimeout(timer); reject(new Error('ws error')); }
         };
       } catch(e){
+        console.log('[TTS] edge exception', e);
         if (!settled){ settled = true; clearTimeout(timer); reject(e); }
       }
     })();
@@ -162,6 +165,7 @@ function pickBestVoice(){
   return scored[0].v;
 }
 function systemSpeak(clean){
+  console.log('[TTS] fallback système');
   const u = new SpeechSynthesisUtterance(clean);
   u.lang = 'fr-FR'; u.rate = 1.02;
   const best = pickBestVoice();
@@ -172,28 +176,34 @@ function systemSpeak(clean){
 const pollyUrl = (voice, clean) => POLLY_URL.replace('{v}', voice).replace('{t}', encodeURIComponent(clean));
 const workerUrl = (voice, clean) => `${EDGE_TTS_URL}?voice=${encodeURIComponent(voice)}&text=${encodeURIComponent(clean)}`;
 
-// ---------- Parole avec chaîne de repli ----------
 export function speak(txt){
-  if (!S.voiceOn || !('speechSynthesis' in window)) return;
+  if (!S.voiceOn || !('speechSynthesis' in window)) { console.log('[TTS] désactivé'); return; }
   const clean = txt.replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/gu,'').trim();
   if (!clean) return;
   stopAll();
+  console.log('[TTS] speak :', clean, '| choix :', voiceChoice);
 
   const engines = [];
   if (voiceChoice.startsWith('edge:')){
     const voice = voiceChoice.slice(5);
     if (!edgeBroken && navigator.onLine)   engines.push(['edge',   () => edgeDirectSpeak(clean, voice)]);
-    if (!workerBroken && EDGE_TTS_URL && navigator.onLine) engines.push(['worker', () => remoteSpeak(workerUrl(voice, clean))]);
-    if (!pollyBroken && navigator.onLine)  engines.push(['polly',  () => remoteSpeak(pollyUrl('Celine', clean))]);
+    if (!workerBroken && EDGE_TTS_URL && navigator.onLine) engines.push(['worker', () => remoteSpeak(workerUrl(voice, clean), 'worker')]);
+    if (!pollyBroken && navigator.onLine)  engines.push(['polly',  () => remoteSpeak(pollyUrl('Celine', clean), 'polly')]);
   } else if (voiceChoice.startsWith('cloud:')){
-    if (!pollyBroken && navigator.onLine)  engines.push(['polly',  () => remoteSpeak(pollyUrl(voiceChoice.slice(6), clean))]);
+    if (!pollyBroken && navigator.onLine)  engines.push(['polly',  () => remoteSpeak(pollyUrl(voiceChoice.slice(6), clean), 'polly')]);
   }
   engines.push(['sys', () => { systemSpeak(clean); return Promise.resolve(); }]);
 
   (async () => {
     for (const [name, fn] of engines){
-      try { await fn(); return; }
+      try { 
+        console.log('[TTS] tentative :', name);
+        await fn(); 
+        console.log('[TTS] succès :', name);
+        return; 
+      }
       catch(e){
+        console.log('[TTS] échec :', name, '→', e.message);
         if (name === 'edge') edgeBroken = true;
         if (name === 'worker') workerBroken = true;
         if (name === 'polly') pollyBroken = true;
@@ -205,7 +215,6 @@ export function testVoice(){
   speak('Bonjour, ceci est un test de la voix sélectionnée.');
 }
 
-// ---------- Alertes ----------
 export function pushAlert(msg, type='warn', ttl=6000){
   const el = document.createElement('div');
   el.className = 'alert ' + type;
