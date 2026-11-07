@@ -1,16 +1,12 @@
 // ============================================================
-// NOTIFY v6 : ResponsiveVoice (cloud gratuit, stable) + fallback système
+// NOTIFY v5.2 : voix système premium + Google Translate TTS
 // ============================================================
 import { $ } from './utils.js';
 import { S, me } from './state.js';
+import { EDGE_TTS_URL } from './config.js';
 
 let canVibrate = false;
 document.addEventListener('pointerdown', () => { canVibrate = true; }, { once: true });
-
-// Charger ResponsiveVoice
-const rvScript = document.createElement('script');
-rvScript.src = 'https://code.responsivevoice.org/responsivevoice.js?key=YOUR_KEY'; // clé gratuite sur responsivevoice.org
-document.head.appendChild(rvScript);
 
 let frVoices = [];
 let voicesLoaded = false;
@@ -18,6 +14,7 @@ function loadVoices(){
   const all = speechSynthesis.getVoices();
   frVoices = all.filter(v => /^fr/i.test(v.lang));
   if (frVoices.length) voicesLoaded = true;
+  console.log('[TTS] voix FR :', frVoices.map(v=>`${v.name} (${v.lang})`).join(', '));
 }
 if ('speechSynthesis' in window){
   loadVoices();
@@ -27,74 +24,212 @@ if ('speechSynthesis' in window){
 
 let voiceChoice = localStorage.getItem('fc_voice') || '';
 
-const RV_VOICES = [
-  { id:'rv:FrenchFemale', name:'Sophie ', sub:'ResponsiveVoice · cloud gratuit', icon:'🌐' },
-  { id:'rv:FrenchMale',   name:'Pierre 🌐', sub:'ResponsiveVoice · cloud gratuit', icon:'🌐' }
+const EDGE_VOICES = [
+  { id:'edge:fr-FR-DeniseNeural', name:'Denise 🧠', sub:'Neuronale Edge · directe navigateur · RECOMMANDÉE', icon:'🧠' },
+  { id:'edge:fr-FR-HenriNeural',  name:'Henri 🧠',  sub:'Neuronale Edge · directe navigateur', icon:'🧠' },
+  { id:'edge:fr-FR-VivienneMultilingualNeural', name:'Vivienne 🧠', sub:'Neuronale Edge · multilingue', icon:'🧠' },
+  { id:'edge:fr-FR-RemyMultilingualNeural',     name:'Rémy 🧠',     sub:'Neuronale Edge · multilingue', icon:'🧠' }
 ];
 const POLLY_VOICES = [
   { id:'cloud:Celine',  name:'Céline ☁️',  sub:'Amazon Polly · cloud gratuit', icon:'☁️' },
   { id:'cloud:Mathieu', name:'Mathieu ☁️', sub:'Amazon Polly · cloud gratuit', icon:'☁️' }
 ];
+const POLLY_URL = 'https://api.streamelements.com/kappa/v2/speech?voice={v}&text={t}';
+const GOOGLE_TTS_URL = 'https://translate.google.com/translate_tts?ie=UTF-8&q={t}&tl=fr&client=tw-ob';
+
+let edgeBroken = false, workerBroken = false, pollyBroken = false, googleBroken = false;
 
 export function listVoiceOptions(){
   if (!voicesLoaded) loadVoices();
   return [
-    ...RV_VOICES,
+    ...EDGE_VOICES,
     ...POLLY_VOICES,
-    ...frVoices.map(v => ({ id:'sys:'+v.name, name:v.name, sub:`${v.lang} · ${v.localService?'📱 offline':'☁️ en ligne'}`, icon:'🎤' }))
+    ...frVoices.map(v => {
+      const isPremium = /premium|enhanced|natural|neural|google|microsoft/i.test(v.name);
+      return { 
+        id:'sys:'+v.name, 
+        name: isPremium ? `${v.name} ⭐` : v.name,
+        sub:`${v.lang} · ${v.localService?'📱 offline':'☁️ en ligne'}${isPremium?' · PREMIUM':''}`, 
+        icon:'🎤' 
+      };
+    })
   ];
 }
 export function getVoiceChoice(){ return voiceChoice; }
 export function setVoiceChoice(id){
   voiceChoice = id || '';
   if (id) localStorage.setItem('fc_voice', id); else localStorage.removeItem('fc_voice');
+  console.log('[TTS] voix choisie :', voiceChoice);
 }
+
+const TOKEN = '6A5AA1D4EAFF4E9FB37E23D68491D6F4';
+const GEC_VERSION = '1-131.0.2903.86';
+async function secMsGec(){
+  const secs = BigInt(Math.floor(Date.now() / 1000)) + 11644473600n;
+  let ticks = secs * 10000000n;
+  ticks = ticks - (ticks % 3000000000n);
+  const data = new TextEncoder().encode(ticks.toString() + TOKEN);
+  const hash = await crypto.subtle.digest('SHA-256', data);
+  return [...new Uint8Array(hash)].map(b => b.toString(16).padStart(2,'0')).join('').toUpperCase();
+}
+const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;');
 
 let currentAudio = null;
 function stopAll(){
   if (currentAudio){ try{ currentAudio.pause(); }catch(e){} currentAudio = null; }
   if ('speechSynthesis' in window) speechSynthesis.cancel();
 }
-
-function rvSpeak(clean, voice){
-  return new Promise((resolve, reject) => {
-    if (typeof ResponsiveVoice === 'undefined'){
-      reject(new Error('ResponsiveVoice non chargé'));
-      return;
-    }
-    const v = ResponsiveVoice.speak(clean, voice, {
-      onend: () => resolve(),
-      onerror: () => reject(new Error('rv error')),
-      pitch: 1, rate: 1, volume: 1
+function playBlob(blob){
+  return new Promise((res, rej) => {
+    const a = new Audio(URL.createObjectURL(blob));
+    currentAudio = a;
+    a.onended = () => { currentAudio = null; res(); };
+    a.onerror = (e) => { currentAudio = null; console.error('[TTS] audio error', e); rej(new Error('audio')); };
+    a.play().catch(rej);
+  });
+}
+function remoteSpeak(url, label){
+  console.log('[TTS]', label, '→', url);
+  return fetch(url)
+    .then(r => { 
+      console.log('[TTS]', label, 'réponse HTTP', r.status);
+      if (!r.ok) throw new Error('http ' + r.status); 
+      return r.blob(); 
+    })
+    .then(b => { 
+      console.log('[TTS]', label, 'blob reçu', b.size, 'octets'); 
+      if (b.size < 100) throw new Error('blob trop petit');
+      return playBlob(b); 
     });
-    if (!v) reject(new Error('rv failed'));
+}
+
+function edgeDirectSpeak(clean, voice){
+  return new Promise((resolve, reject) => {
+    (async () => {
+      let ws = null, settled = false;
+      const timer = setTimeout(() => {
+        if (!settled){ settled = true; try{ ws && ws.close(); }catch(e){} console.log('[TTS] edge timeout'); reject(new Error('timeout')); }
+      }, 10000);
+      try {
+        const gec = await secMsGec();
+        const url = `wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1?TrustedClientToken=${TOKEN}&Sec-MS-GEC=${gec}&Sec-MS-GEC-Version=${GEC_VERSION}`;
+        console.log('[TTS] edge WS connecting...');
+        ws = new WebSocket(url);
+        const chunks = [];
+        const reqId = crypto.randomUUID();
+        const ts = () => new Date().toISOString();
+        ws.onopen = () => {
+          console.log('[TTS] edge WS ouvert');
+          ws.send(
+            `X-Timestamp:${ts()}\r\nContent-Type:application/json; charset=utf-8\r\nPath:speech.config\r\n\r\n` +
+            `{"context":{"synthesis":{"audio":{"metadataoptions":{"sentenceBoundaryEnabled":"false","wordBoundaryEnabled":"false"},"outputFormat":"audio-24khz-48kbitrate-mono-mp3"}}}}\r\n`
+          );
+          ws.send(
+            `X-RequestId:${reqId}\r\nContent-Type:application/ssml; charset=utf-8\r\nPath:ssml\r\n\r\n` +
+            `<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='fr-FR'>` +
+            `<voice name='${voice}'><prosody pitch='+0Hz' rate='+0%' volume='+0%'>${esc(clean)}</prosody></voice></speak>`
+          );
+        };
+        ws.onmessage = ev => {
+          if (typeof ev.data === 'string'){
+            if (ev.data.includes('Path:turn.end')){
+              if (settled) return;
+              settled = true; clearTimeout(timer);
+              try{ ws.close(); }catch(e){}
+              console.log('[TTS] edge terminé, chunks :', chunks.length);
+              playBlob(new Blob(chunks, { type:'audio/mpeg' })).then(resolve).catch(reject);
+            }
+            return;
+          }
+          const buf = new Uint8Array(ev.data);
+          if (buf.length < 2) return;
+          const hl = (buf[0] << 8) | buf[1];
+          const audio = buf.slice(2 + hl);
+          if (audio.length) chunks.push(audio);
+        };
+        ws.onerror = (e) => {
+          console.log('[TTS] edge WS error', e);
+          if (!settled){ settled = true; clearTimeout(timer); reject(new Error('ws error')); }
+        };
+      } catch(e){
+        console.log('[TTS] edge exception', e);
+        if (!settled){ settled = true; clearTimeout(timer); reject(e); }
+      }
+    })();
   });
 }
 
+function pickBestVoice(){
+  if (!frVoices.length) return null;
+  if (voiceChoice.startsWith('sys:')){
+    const v = frVoices.find(v => v.name === voiceChoice.slice(4));
+    if (v) return v;
+  }
+  // Priorité aux voix premium
+  const scored = frVoices.map(v => {
+    let score = 0; const n = v.name.toLowerCase();
+    if (v.lang === 'fr-FR') score += 10;
+    if (/premium|enhanced/i.test(n)) score += 25;
+    if (/google/i.test(n)) score += 20;
+    if (/microsoft/i.test(n)) score += 15;
+    if (/natural|neural/i.test(n)) score += 12;
+    if (/audrey|thomas|amelie|aurelie|marie|henri/i.test(n)) score += 8;
+    if (v.localService) score += 5;
+    return { v, score };
+  }).sort((a,b) => b.score - a.score);
+  console.log('[TTS] meilleure voix système :', scored[0].v.name, '(score:', scored[0].score, ')');
+  return scored[0].v;
+}
 function systemSpeak(clean){
+  console.log('[TTS] fallback système');
   const u = new SpeechSynthesisUtterance(clean);
   u.lang = 'fr-FR'; u.rate = 1.02;
-  if (frVoices.length){
-    const best = frVoices.find(v => /google|microsoft|audrey|thomas/i.test(v.name)) || frVoices[0];
-    u.voice = best;
-  }
+  const best = pickBestVoice();
+  if (best){ u.voice = best; u.lang = best.lang; }
   speechSynthesis.speak(u);
 }
 
+const pollyUrl = (voice, clean) => POLLY_URL.replace('{v}', voice).replace('{t}', encodeURIComponent(clean));
+const workerUrl = (voice, clean) => `${EDGE_TTS_URL}?voice=${encodeURIComponent(voice)}&text=${encodeURIComponent(clean)}`;
+const googleUrl = (clean) => GOOGLE_TTS_URL.replace('{t}', encodeURIComponent(clean));
+
 export function speak(txt){
-  if (!S.voiceOn || !('speechSynthesis' in window)) return;
+  if (!S.voiceOn || !('speechSynthesis' in window)) { console.log('[TTS] désactivé'); return; }
   const clean = txt.replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/gu,'').trim();
   if (!clean) return;
   stopAll();
+  console.log('[TTS] speak :', clean, '| choix :', voiceChoice);
 
-  if (voiceChoice.startsWith('rv:') && typeof ResponsiveVoice !== 'undefined'){
-    rvSpeak(clean, voiceChoice.slice(3)).catch(()=> systemSpeak(clean));
+  const engines = [];
+  if (voiceChoice.startsWith('edge:')){
+    const voice = voiceChoice.slice(5);
+    if (!edgeBroken && navigator.onLine)   engines.push(['edge',   () => edgeDirectSpeak(clean, voice)]);
+    if (!workerBroken && EDGE_TTS_URL && navigator.onLine) engines.push(['worker', () => remoteSpeak(workerUrl(voice, clean), 'worker')]);
+    if (!pollyBroken && navigator.onLine)  engines.push(['polly',  () => remoteSpeak(pollyUrl('Celine', clean), 'polly')]);
+    if (!googleBroken && navigator.onLine) engines.push(['google', () => remoteSpeak(googleUrl(clean), 'google')]);
   } else if (voiceChoice.startsWith('cloud:')){
-    // Polly (si tu veux garder)
-    systemSpeak(clean);
-  } else {
-    systemSpeak(clean);
+    if (!pollyBroken && navigator.onLine)  engines.push(['polly',  () => remoteSpeak(pollyUrl(voiceChoice.slice(6), clean), 'polly')]);
+    if (!googleBroken && navigator.onLine) engines.push(['google', () => remoteSpeak(googleUrl(clean), 'google')]);
   }
+  engines.push(['sys', () => { systemSpeak(clean); return Promise.resolve(); }]);
+
+  (async () => {
+    for (const [name, fn] of engines){
+      try { 
+        console.log('[TTS] tentative :', name);
+        await fn(); 
+        console.log('[TTS] succès :', name);
+        return; 
+      }
+      catch(e){
+        console.log('[TTS] échec :', name, '→', e.message);
+        if (name === 'edge') edgeBroken = true;
+        if (name === 'worker') workerBroken = true;
+        if (name === 'polly') pollyBroken = true;
+        if (name === 'google') googleBroken = true;
+      }
+    }
+  })();
 }
 export function testVoice(){
   speak('Bonjour, ceci est un test de la voix sélectionnée.');
