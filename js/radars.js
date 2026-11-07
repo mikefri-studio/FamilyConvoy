@@ -253,6 +253,10 @@ function playBeep(){
 export function toggleRadars(){
   settings.enabled = !settings.enabled;
   saveSettings({ enabled: settings.enabled });
+  if (settings.enabled) updateRadarLayer();
+  else if (mainMap && mainMap.getSource('radars')) {
+      mainMap.getSource('radars').setData({ type: 'FeatureCollection', features: [] });
+  }
   return settings.enabled;
 }
 export function isRadarsEnabled(){ return settings.enabled; }
@@ -260,6 +264,19 @@ export function isRadarsEnabled(){ return settings.enabled; }
 // ---------- Couche GeoJSON ----------
 export function initRadarLayer(){
   if (!mainMap) return;
+
+  // 🛡️ CORRECTION CRUCIALE : Nettoyage avant recréation
+  // Quand on change de fond de carte (style.load), cette fonction est rappelée.
+  // Sans ce nettoyage, MapLibre planterait avec "Layer already exists".
+  if (mainMap.getLayer('radar-labels')) mainMap.removeLayer('radar-labels');
+  if (mainMap.getLayer('radar-circles')) mainMap.removeLayer('radar-circles');
+  if (mainMap.getSource('radars')) mainMap.removeSource('radars');
+
+  // 🛡️ Nettoyage des événements pour éviter les doublons (qui spammeraient les popups)
+  mainMap.off('click', 'radar-circles');
+  mainMap.off('mouseenter', 'radar-circles');
+  mainMap.off('mouseleave', 'radar-circles');
+
   mainMap.addSource('radars', { type: 'geojson', data: { type:'FeatureCollection', features:[] } });
   mainMap.addLayer({
     id: 'radar-circles',
@@ -294,7 +311,8 @@ export function initRadarLayer(){
     }
   });
 
-  mainMap.on('click', 'radar-circles', (e) => {
+  const handleRadarClick = (e) => {
+    if (!e.features || !e.features.length) return;
     const p = e.features[0].properties;
     let html = '';
     if (p.isReport){
@@ -310,9 +328,14 @@ export function initRadarLayer(){
       html = `<b>${type}</b><br>ID: ${p.numero || p.id}${vma}<br><small>Mis en service: ${p.date}</small>`;
     }
     new maplibregl.Popup().setLngLat(e.lngLat).setHTML(html).addTo(mainMap);
-  });
-  mainMap.on('mouseenter', 'radar-circles', () => { mainMap.getCanvas().style.cursor = 'pointer'; });
-  mainMap.on('mouseleave', 'radar-circles', () => { mainMap.getCanvas().style.cursor = ''; });
+  };
+
+  const handleMouseEnter = () => { mainMap.getCanvas().style.cursor = 'pointer'; };
+  const handleMouseLeave = () => { mainMap.getCanvas().style.cursor = ''; };
+
+  mainMap.on('click', 'radar-circles', handleRadarClick);
+  mainMap.on('mouseenter', 'radar-circles', handleMouseEnter);
+  mainMap.on('mouseleave', 'radar-circles', handleMouseLeave);
 
   updateRadarLayer();
 }
