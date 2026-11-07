@@ -1,505 +1,227 @@
 // ============================================================
-// APP : assemblage — GPS, partage Firebase, alertes, routes,
-//       voix, événements, démarrage. Point d'entrée du module.
+// NOTIFY v5 : alertes + moteur de voix 4 étages auto-réparant
+//   🧠 edge-direct : WebSocket navigateur → Bing (meilleure qualité)
+//   🛰️ worker     : ton proxy Cloudflare (secours)
+//   ☁️ polly       : Amazon Polly via StreamElements (secours)
+//   📱 sys         : voix système (offline, dernier recours)
 // ============================================================
-import { MAP_STYLES, TESLA_WORKER_URL } from './config.js';
-import { $, haversineKm, bearingDeg, ago, freshDev, colorFor, bus } from './utils.js';
-import { S, me, getAll } from './state.js';
-import { pushAlert, speak, updateStatus, updateRoleUI,
-         listVoiceOptions, setVoiceChoice, getVoiceChoice, testVoice } from './notify.js';
-import { R, db } from './db.js';
-import { bindAvatarUI, openAvatarOverlay, loadEmblem } from './avatar.js';
-import { initMaps, initDriverMap, playReplay, closeReplay } from './map.js';
-import { render, updateFollowPill, bindCoreUI, autoNight } from './ui.js';
-import { tripTick, endTrip, resumeTrip, pruneHistory, bindHistoryUI } from './trips.js';
-import { bindRadio, playRadio } from './radio.js';
-import * as MAP from './map.js';
+import { $ } from './utils.js';
+import { S, me } from './state.js';
+import { EDGE_TTS_URL } from './config.js';
 
-// ============================================================
-// 📍 GPS + réseau + batterie + wake lock
-// ============================================================
-function startGPS(){
-  if (!navigator.geolocation){ $('#status').textContent='GPS non supporté'; return; }
-  navigator.geolocation.watchPosition(p => {
-    const now = Date.now();
-    const newLat=p.coords.latitude, newLng=p.coords.longitude;
-    if (me.lat != null) {
-      const moved = haversineKm(me.lat,me.lng,newLat,newLng)*1000;
-      if (moved > 20) S.myHeading = bearingDeg(me.lat,me.lng,newLat,newLng);
-      if (moved < 15 && me.speed < 5 && now - S.lastGPSUpdate < 2500) return;
-    }
-    if (p.coords.heading != null && me.speed > 5) S.myHeading = p.coords.heading;
-    me.lat = newLat; me.lng = newLng;
-    me.accuracy = p.coords.accuracy;
-    me.speed = Math.round((p.coords.speed||0)*3.6);
-    S.lastGPSUpdate = now;
-    updateStatus();
-  }, e => { $('#status').textContent = 'GPS refusé'; pushAlert('⚠️ Autorise la géolocalisation','warn'); },
-  { enableHighAccuracy:true, maximumAge:2000, timeout:15000 });
+let canVibrate = false;
+document.addEventListener('pointerdown', () => { canVibrate = true; }, { once: true });
+
+// ---------- Voix système ----------
+let frVoices = [];
+let voicesLoaded = false;
+function loadVoices(){
+  const all = speechSynthesis.getVoices();
+  frVoices = all.filter(v => /^fr/i.test(v.lang));
+  if (frVoices.length) voicesLoaded = true;
 }
-function updateNetIcon(){
-  const c = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
-  if (!c) { S.netIcon = ''; return; }
-  const t = c.effectiveType;
-  S.netIcon = (t === '4g' && (c.downlink||0) > 5) ? '🟢' : t === '4g' ? '🟢' : t === '3g' ? '🟡' : '🔴';
-  updateStatus();
-}
-if (navigator.connection && navigator.connection.addEventListener) navigator.connection.addEventListener('change', updateNetIcon);
-updateNetIcon();
-if (navigator.getBattery) navigator.getBattery().then(b => {
-  S.phoneBattery = Math.round(b.level*100);
-  b.addEventListener('levelchange', ()=> S.phoneBattery = Math.round(b.level*100));
-});
-let wakeLock = null;
-async function keepScreenOn(){ try { wakeLock = await navigator.wakeLock.request('screen'); } catch(e){} }
-document.addEventListener('visibilitychange', () => {
-  if (wakeLock !== null && document.visibilityState === 'visible') keepScreenOn();
-});
-
-// ============================================================
-// 📡 Partage Firebase (rôles gps/screen, envoi 5 s)
-// ============================================================
-function setRole(r, silent){
-  if (me.role === r || !S.refs.myRef) return;
-  me.role = r;
-  if (r === 'gps') {
-    R.onDisconnect(S.refs.myRef).update({ lat:null, lng:null, speed:0, gpsDevice:null });
-    if (!silent) pushAlert('📍 Cet appareil transmet ta position','success');
-  } else {
-    R.onDisconnect(S.refs.myRef).cancel();
-    if (!silent) pushAlert('📺 Cet appareil passe en mode écran','info');
-  }
-  updateRoleUI(); updateStatus();
-}
-$('#btn-takeover').onclick = () => {
-  if (!S.refs.myRef) return;
-  R.update(S.refs.myRef, { gpsDevice: me.device });
-  setRole('gps');
-};
-
-function startSharing(){
-  S.joined = true; S.hidden = false;
-  S.refs.myRef = R.ref(db, `convoy/${me.group}/members/${me.id}`);
-  S.refs.deviceRef = R.ref(db, `convoy/${me.group}/members/${me.id}/devices/${me.device}`);
-  R.onDisconnect(S.refs.deviceRef).remove();
-  if (me.role === 'gps') R.onDisconnect(S.refs.myRef).update({ lat:null, lng:null, speed:0, gpsDevice:null });
-
-  R.get(S.refs.myRef).then(snap => {
-    const v = snap.val() || {};
-    const gps = Object.entries(v.devices||{}).find(([did,d]) => d.role==='gps' && freshDev(d));
-    if (me.role === 'gps' && gps && gps[0] !== me.device) setRole('screen', true);
-  }).catch(()=>{});
-
-  S.refs.membersRef = R.ref(db, `convoy/${me.group}/members`);
-  S.refs.membersCb = snap => {
-    S.members = snap.val() || {};
-    const myNode = S.members[me.id];
-    if (myNode && myNode.gpsDevice) {
-      if (myNode.gpsDevice !== me.device && me.role === 'gps') setRole('screen');
-      if (myNode.gpsDevice === me.device && me.role === 'screen') setRole('gps');
-    }
-    detectAlerts(); render();
-  };
-  R.onValue(S.refs.membersRef, S.refs.membersCb);
-
-  S.refs.radioRef = R.ref(db, `convoy/${me.group}/radio`);
-  S.refs.radioCb = snap => {
-    const m = snap.val();
-    if (!m || m.fromPerson === me.id || m.from === me.device) return;
-    if (Date.now() - m.ts > 120000) return;
-    playRadio(m);
-  };
-  R.onChildAdded(S.refs.radioRef, S.refs.radioCb);
-
-  R.get(S.refs.radioRef).then(snap => {
-    const updates = {};
-    Object.entries(snap.val() || {}).forEach(([k, m]) => {
-      if (Date.now() - (m.ts||0) > 600000) updates[k] = null;
-    });
-    if (Object.keys(updates).length) R.update(S.refs.radioRef, updates);
-  }).catch(()=>{});
-
-  loadEmblem(me.group);
-  setTimeout(updateRoutes, 4000);
-  updateRoleUI(); updateStatus();
-  resumeTrip();
-  pruneHistory();
+if ('speechSynthesis' in window){
+  loadVoices();
+  speechSynthesis.onvoiceschanged = loadVoices;
+  setTimeout(loadVoices, 1000);
 }
 
-setInterval(() => {
-  if (!S.joined || S.hidden || me.lat == null || !S.refs.myRef) return;
-  R.set(S.refs.deviceRef, { role: me.role, lat: me.lat, lng: me.lng, battery: S.phoneBattery, updatedAt: Date.now() });
-  const payload = {
-    name: me.name, color: me.colorChoice || colorFor(me.id),
-    emoji: me.emoji || null, hasAvatar: me.hasAvatar || null, avatarTs: me.avatarTs || null
-  };
-  if (me.role === 'gps') {
-    R.update(S.refs.myRef, { ...payload, lat: me.lat, lng: me.lng, speed: me.speed,
-      battery: S.phoneBattery, gpsDevice: me.device, updatedAt: Date.now() });
-  } else {
-    R.update(S.refs.myRef, payload);
-  }
-}, 5000);
+// ---------- Choix de voix ----------
+let voiceChoice = localStorage.getItem('fc_voice') || '';
 
-// ============================================================
-// 🚪 Quitter / rejoindre
-// ============================================================
-function leaveGroup(clearName=false){
-  endTrip();
-  if (S.refs.deviceRef) { R.onDisconnect(S.refs.deviceRef).cancel(); R.set(S.refs.deviceRef, null); }
-  if (S.refs.myRef) {
-    R.onDisconnect(S.refs.myRef).cancel();
-    if (me.role === 'gps') R.update(S.refs.myRef, { lat:null, lng:null, speed:0, gpsDevice:null });
-  }
-  if (S.refs.membersRef && S.refs.membersCb) R.off(S.refs.membersRef, S.refs.membersCb);
-  if (S.refs.radioRef && S.refs.radioCb) R.off(S.refs.radioRef, S.refs.radioCb);
-  S.joined = false; S.hidden = false; S.followId = null; me.role = 'gps';
-  S.tripResumeChecked = false;
-  updateFollowPill(); updateRoleUI();
-  S.members = {};
-  for (const k of Object.keys(S.trails)) delete S.trails[k];
-  for (const m of Object.values(S.markersMain)) m.remove();
-  for (const m of Object.values(S.markersDriver)) m.remove();
-  for (const k of Object.keys(S.markersMain)) delete S.markersMain[k];
-  for (const k of Object.keys(S.markersDriver)) delete S.markersDriver[k];
-  for (const k of Object.keys(S.alertState)) delete S.alertState[k];
-  localStorage.removeItem('fc_group');
-  if (clearName) localStorage.removeItem('fc_name');
-  S.boundsDone = false;
-  S.refs = {};
-  me.group = '';
-  $('#group-label').textContent = '—';
-  updateStatus(); render();
-}
-function showJoinOverlay(withName){
-  $('#overlay').classList.remove('hidden');
-  $('#inp-name').value = withName ? (localStorage.getItem('fc_name') || '') : '';
-  $('#inp-group').value = '';
-}
-const params = new URLSearchParams(location.search);
-const pairPerson = params.get('p');
+const EDGE_VOICES = [
+  { id:'edge:fr-FR-DeniseNeural', name:'Denise 🧠', sub:'Neuronale Edge · directe navigateur · RECOMMANDÉE', icon:'🧠' },
+  { id:'edge:fr-FR-HenriNeural',  name:'Henri 🧠',  sub:'Neuronale Edge · directe navigateur', icon:'🧠' },
+  { id:'edge:fr-FR-VivienneMultilingualNeural', name:'Vivienne 🧠', sub:'Neuronale Edge · multilingue', icon:'🧠' },
+  { id:'edge:fr-FR-RemyMultilingualNeural',     name:'Rémy 🧠',     sub:'Neuronale Edge · multilingue', icon:'🧠' }
+];
+const POLLY_VOICES = [
+  { id:'cloud:Celine',  name:'Céline ☁️',  sub:'Amazon Polly · cloud gratuit', icon:'☁️' },
+  { id:'cloud:Mathieu', name:'Mathieu ☁️', sub:'Amazon Polly · cloud gratuit', icon:'☁️' }
+];
+const POLLY_URL = 'https://api.streamelements.com/kappa/v2/speech?voice={v}&text={t}';
 
-function join(){
-  const name = $('#inp-name').value.trim().slice(0,24);
-  const group = ($('#inp-group').value.trim()||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
-  if (!name) { pushAlert('⚠️ Entre un nom','warn'); return; }
-  if (group.length < 3 || group.length > 20) { pushAlert('⚠️ Code invalide (3-20 lettres/chiffres)','warn'); return; }
-  if (pairPerson) {
-    me.id = pairPerson; me.role = 'screen';
-    localStorage.setItem('fc_person', pairPerson);
-  }
-  me.name = name; me.group = group;
-  localStorage.setItem('fc_name', me.name);
-  localStorage.setItem('fc_group', me.group);
-  $('#overlay').classList.add('hidden');
-  $('#group-label').textContent = me.group;
-  startGPS(); startSharing(); keepScreenOn();
-  pushAlert(pairPerson ? `📺 Appairé au convoi ${me.group} (mode écran)` : `✅ Rejoint le convoi ${me.group}`, 'success');
-  speak(`Convoi ${me.group} rejoint`);
-}
-$('#btn-join').onclick = join;
+let edgeBroken = false, workerBroken = false, pollyBroken = false;
 
-// ============================================================
-// 🚨 Alertes intelligentes
-// ============================================================
-function detectAlerts(){
-  const all = getAll();
-  const myEntry = all[me.id];
-  for (const [id, v] of Object.entries(all)) {
-    const seen = v.lastSeen || v.updatedAt;
-    if (!seen || v.lat == null) continue;
-    const fresh = Date.now() - seen < 120000;
-    if (id !== me.id && fresh) {
-      const stopped = (v.speed||0) < 5;
-      const k = 'stop_'+id;
-      if (stopped && !S.alertState[k]) S.alertState[k]=Date.now();
-      else if (stopped && S.alertState[k] && Date.now()-S.alertState[k] > 30000 && !S.alertState[k+'_fired']) {
-        S.alertState[k+'_fired']=true;
-        pushAlert(`🛑 ${v.name} est arrêté(e)`,'warn');
-      }
-      else if (!stopped) { S.alertState[k]=null; S.alertState[k+'_fired']=false; }
-    }
-    if (v.battery != null && v.battery < 20) {
-      const k = 'bat_'+id;
-      if (!S.alertState[k]) { S.alertState[k]=true; pushAlert(`🔋 Batterie faible : ${v.name} (${v.battery}%)`,'warn'); }
-    }
-    if (id !== me.id && fresh && myEntry) {
-      const dist = haversineKm(myEntry.lat, myEntry.lng, v.lat, v.lng);
-      const k = 'far_'+id;
-      if (dist > 20 && !S.alertState[k]) { S.alertState[k]=true; pushAlert(`↔️ ${v.name} est loin (${dist.toFixed(0)} km)`,'info'); }
-      else if (dist < 15) S.alertState[k]=false;
-    }
-    if (!fresh) {
-      const k = 'stale_'+id;
-      if (!S.alertState[k]) { S.alertState[k]=true; pushAlert(`📵 ${v.name} : pas de signal depuis ${ago(seen)}`,'warn',8000); }
-    } else S.alertState['stale_'+id]=false;
-  }
+export function listVoiceOptions(){
+  if (!voicesLoaded) loadVoices();
+  return [
+    ...EDGE_VOICES,
+    ...POLLY_VOICES,
+    ...frVoices.map(v => ({ id:'sys:'+v.name, name:v.name, sub:`${v.lang} · ${v.localService?'📱 offline':'☁️ en ligne'}`, icon:'🎤' }))
+  ];
+}
+export function getVoiceChoice(){ return voiceChoice; }
+export function setVoiceChoice(id){
+  voiceChoice = id || '';
+  if (id) localStorage.setItem('fc_voice', id); else localStorage.removeItem('fc_voice');
 }
 
-// ============================================================
-// 🛣️ Itinéraires OSRM
-// ============================================================
-async function updateRoutes(){
-  if (!S.joined || me.lat == null) return;
-  const all = getAll();
-  const jobs = [];
-  for (const [id, v] of Object.entries(all)) {
-    if (id === me.id || v.lat == null) continue;
-    const rc = S.routeCache[id];
-    if (rc && Date.now()-rc.ts < 60000) continue;
-    jobs.push(
-      fetch(`https://router.project-osrm.org/route/v1/driving/${me.lng},${me.lat};${v.lng},${v.lat}?overview=false`)
-        .then(r=>r.json())
-        .then(j=>{ if (j.code==='Ok' && j.routes && j.routes[0]) S.routeCache[id] = { km:j.routes[0].distance/1000, min:Math.round(j.routes[0].duration/60), ts:Date.now() }; })
-        .catch(()=>{})
-    );
-  }
-  if (jobs.length) { await Promise.allSettled(jobs); render(); }
+// ---------- Protocole Edge (jeton Sec-MS-GEC) ----------
+const TOKEN = '6A5AA1D4EAFF4E9FB37E23D68491D6F4';
+const GEC_VERSION = '1-131.0.2903.86';
+async function secMsGec(){
+  const secs = BigInt(Math.floor(Date.now() / 1000)) + 11644473600n;
+  let ticks = secs * 10000000n;
+  ticks = ticks - (ticks % 3000000000n);
+  const data = new TextEncoder().encode(ticks.toString() + TOKEN);
+  const hash = await crypto.subtle.digest('SHA-256', data);
+  return [...new Uint8Array(hash)].map(b => b.toString(16).padStart(2,'0')).join('').toUpperCase();
 }
-setInterval(updateRoutes, 30000);
+const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;');
 
-// ============================================================
-// 🗣️ Annonce vocale du véhicule le plus proche
-// ============================================================
-setInterval(()=>{
-  if (!S.joined || !S.voiceOn) return;
-  if (!(S.driverMode || me.speed > 20)) return;
-  const all = getAll();
-  const my = all[me.id];
-  if (!my || me.lat == null) return;
-  let nearest=null, minD=Infinity;
-  for (const [id,v] of Object.entries(all)){
-    if (id===me.id || v.lat==null) continue;
-    const d = haversineKm(my.lat,my.lng,v.lat,v.lng);
-    if (d<minD){ minD=d; nearest=v; }
-  }
-  if (nearest) {
-    let pos = '';
-    if (S.myHeading != null) {
-      const b = bearingDeg(me.lat, me.lng, nearest.lat, nearest.lng);
-      const diff = ((b - S.myHeading + 540) % 360) - 180;
-      pos = Math.abs(diff) < 90 ? 'devant toi' : 'derrière toi';
-    }
-    speak(`${nearest.name} est à ${minD.toFixed(1)} kilomètres ${pos}`);
-  }
-}, 120000);
-
-// ============================================================
-// ⚡ Tesla (optionnel)
-// ============================================================
-if (TESLA_WORKER_URL) {
-  $('#btn-tesla').classList.remove('hidden');
-  $('#btn-tesla').onclick = () => window.open(TESLA_WORKER_URL + '/auth', '_blank');
-  const loadTesla = async () => {
-    try {
-      const cars = await (await fetch(TESLA_WORKER_URL + '/vehicles')).json();
-      if (cars.error) return;
-      S.teslaCars = {};
-      for (const c of cars) {
-        const d = await (await fetch(`${TESLA_WORKER_URL}/data?id=${c.id}`)).json();
-        if (!d.error) S.teslaCars['tesla_'+c.id] = {...d, name:'⚡ '+d.name, color:'#7b1fa2'};
-      }
-      render();
-    } catch(e){}
-  };
-  loadTesla(); setInterval(loadTesla, 60000);
+// ---------- Lecture ----------
+let currentAudio = null;
+function stopAll(){
+  if (currentAudio){ try{ currentAudio.pause(); }catch(e){} currentAudio = null; }
+  if ('speechSynthesis' in window) speechSynthesis.cancel();
 }
-
-// ============================================================
-// 🎮 Événements globaux (menu, conduite, follow, replay…)
-// ============================================================
-function toggleFollow(id){
-  if (S.followId === id) S.followId = null;
-  else {
-    S.followId = id;
-    const v = getAll()[id];
-    if (v && v.lat != null && MAP.map) MAP.map.flyTo({ center:[v.lng, v.lat], zoom: Math.max(MAP.map.getZoom(), 14), duration: 1500 });
-    pushAlert(`🎯 Tu suis ${v?.name || id}`,'info',3000);
-  }
-  updateFollowPill(); render();
-}
-bus.on('follow-toggle', toggleFollow);
-bus.on('follow-stop', () => { updateFollowPill(); render(); });
-bus.on('render', () => render());
-
-$('#btn-menu').onclick = () => {
-  $('#menu-group').textContent = me.group || '—';
-  $('#btn-toggle-hide').textContent = S.hidden ? '👁 Rendre ma position visible' : '👻 Cacher ma position';
-  $('#menu-overlay').classList.remove('hidden');
-};
-$('#btn-close-menu').onclick = () => $('#menu-overlay').classList.add('hidden');
-$('#btn-avatar').onclick = () => { $('#menu-overlay').classList.add('hidden'); openAvatarOverlay(); };
-$('#btn-toggle-hide').onclick = () => {
-  if (!S.joined) { pushAlert('Rejoins d\'abord un convoi','info'); return; }
-  S.hidden = !S.hidden;
-  if (S.hidden) {
-    R.update(S.refs.myRef, { hidden:true, lat:null, lng:null, speed:0 });
-    R.set(S.refs.deviceRef, null);
-    pushAlert('👻 Position masquée — tu vois le convoi, personne ne te voit','info');
-  } else {
-    R.update(S.refs.myRef, { hidden:false });
-    pushAlert('👁 Position visible à nouveau','success');
-  }
-  $('#btn-toggle-hide').textContent = S.hidden ? '👁 Rendre ma position visible' : '👻 Cacher ma position';
-  $('#menu-overlay').classList.add('hidden');
-  updateStatus(); render();
-};
-$('#btn-switch').onclick = () => {
-  $('#menu-overlay').classList.add('hidden');
-  const old = me.group;
-  leaveGroup(false); showJoinOverlay(true);
-  pushAlert(`🔁 Quitté ${old} — rejoins un autre convoi`,'info');
-};
-$('#btn-quit').onclick = () => {
-  $('#menu-overlay').classList.add('hidden');
-  const old = me.group;
-  leaveGroup(true); showJoinOverlay(false);
-  pushAlert(`🚪 Tu as quitté ${old}`,'warn');
-};
-
-// Mode conduite
-$('#btn-driver').onclick = () => {
-  S.driverMode = true;
-  document.body.classList.add('driver');
-  initDriverMap();
-  setTimeout(render, 150);
-  if (screen.orientation && screen.orientation.lock) screen.orientation.lock('landscape').catch(()=>{});
-};
-$('#btn-exit-driver').onclick = () => {
-  S.driverMode = false;
-  document.body.classList.remove('driver');
-  if (screen.orientation && screen.orientation.unlock) screen.orientation.unlock();
-};
-$('#btn-center-me').onclick = () => {
-  if (me.lat != null && MAP.driverMap) {
-    MAP.driverMap.flyTo({ center:[me.lng, me.lat], zoom:15, pitch:45, duration:1200 });
-    S.followMe = true;
-  }
-};
-
-// Replay
-$('#btn-replay-play').onclick = playReplay;
-$('#btn-replay-close').onclick = closeReplay;
-
-// QR / invitation
-function openShare(mode){
-  if (!me.group) { pushAlert('Rejoins d\'abord un convoi','info'); return; }
-  S.shareLink = mode === 'pair'
-    ? `${location.origin}${location.pathname}?g=${me.group}&p=${me.id}`
-    : `${location.origin}${location.pathname}?g=${me.group}`;
-  $('#share-title').textContent = mode === 'pair' ? '🔗 Mon autre appareil' : '📤 Inviter';
-  $('#share-mode-hint').textContent = mode === 'pair'
-    ? 'À scanner sur UN DE TES appareils (tablette, 2e téléphone…) : il rejoindra sans créer de doublon.'
-    : 'Partage ce lien pour inviter une nouvelle personne dans le convoi.';
-  $('#share-link-text').textContent = S.shareLink;
-  $('#qr-box').innerHTML = '';
-  new QRCode($('#qr-box'), { text: S.shareLink, width: 200, height: 200, correctLevel: QRCode.CorrectLevel.M });
-  $('#share-overlay').classList.remove('hidden');
-}
-$('#btn-share').onclick = () => openShare('invite');
-$('#btn-pair').onclick = () => { $('#menu-overlay').classList.add('hidden'); openShare('pair'); };
-$('#btn-copy').onclick = () => navigator.clipboard.writeText(S.shareLink).then(()=> pushAlert('Lien copié ! 📋','info'));
-$('#btn-close-share').onclick = () => $('#share-overlay').classList.add('hidden');
-
-// ============================================================
-// 🎤 Voix : bouton du dock + overlay de choix
-// (bindé APRÈS bindCoreUI pour gagner la priorité sur le clic)
-// ============================================================
-function openVoiceOverlay(){
-  const list = $('#voice-list');
-  const options = listVoiceOptions();
-  const current = getVoiceChoice();
-  if (!options.length){
-    list.innerHTML = '<div class="row"><span>⚠️ Aucune voix détectée sur cet appareil.</span></div>';
-  } else {
-    list.innerHTML = options.map(o => {
-      const isActive = o.id === current;
-      return `<div class="row ${isActive?'followed':''}" data-voice="${o.id.replace(/"/g,'&quot;')}">
-        <div class="avatar" style="background:var(--accent);border-radius:12px">${o.icon || '🎤'}</div>
-        <div class="who">
-          <div class="nm">${o.name}</div>
-          <div class="sub">${o.sub}</div>
-        </div>
-        <div class="rt"><div class="dst">${isActive?'✓ actif':''}</div></div>
-      </div>`;
-    }).join('');
-  }
-  $('#voice-overlay').classList.remove('hidden');
-}
-function bindVoiceUI(){
-  $('#btn-voice').onclick = () => {
-    S.voiceOn = !S.voiceOn;
-    $('#btn-voice').querySelector('.ico').textContent = S.voiceOn ? '🔊' : '🔇';
-    $('#btn-voice').classList.toggle('active', S.voiceOn);
-    if (S.voiceOn && window.__voiceTap && Date.now() - window.__voiceTap < 400) openVoiceOverlay();
-    if (S.voiceOn) window.__voiceTap = Date.now();
-  };
-  let voicePressTimer = null;
-  $('#btn-voice').addEventListener('pointerdown', () => { voicePressTimer = setTimeout(openVoiceOverlay, 600); });
-  $('#btn-voice').addEventListener('pointerup', () => clearTimeout(voicePressTimer));
-  $('#btn-voice').addEventListener('pointercancel', () => clearTimeout(voicePressTimer));
-
-  $('#voice-list').addEventListener('click', e => {
-    const row = e.target.closest('.row[data-voice]');
-    if (!row) return;
-    setVoiceChoice(row.dataset.voice);
-    testVoice();
-    openVoiceOverlay();
+function playBlob(blob){
+  return new Promise((res, rej) => {
+    const a = new Audio(URL.createObjectURL(blob));
+    currentAudio = a;
+    a.onended = () => { currentAudio = null; res(); };
+    a.onerror = () => { currentAudio = null; rej(new Error('audio')); };
+    a.play().catch(rej);
   });
-  $('#btn-test-voice').onclick = testVoice;
-  $('#btn-voice-reset').onclick = () => { setVoiceChoice(''); testVoice(); openVoiceOverlay(); };
-  $('#btn-close-voice').onclick = () => $('#voice-overlay').classList.add('hidden');
+}
+function remoteSpeak(url){
+  return fetch(url)
+    .then(r => { if (!r.ok) throw new Error('http ' + r.status); return r.blob(); })
+    .then(playBlob);
 }
 
-// ============================================================
-// 📲 Service worker PWA
-// ============================================================
-const SW_CODE = `
-const CACHE = 'fc-v17';
-self.addEventListener('install', e => { self.skipWaiting(); });
-self.addEventListener('activate', e => { e.waitUntil(self.clients.claim()); });
-self.addEventListener('fetch', e => {
-  if (e.request.method !== 'GET') return;
-  e.respondWith(
-    caches.open(CACHE).then(c =>
-      c.match(e.request).then(r => r || fetch(e.request).then(res => {
-        if (res.ok && e.request.url.startsWith('http')) c.put(e.request, res.clone());
-        return res;
-      }).catch(()=>r))
-    )
-  );
-});`;
-if ('serviceWorker' in navigator) {
-  const blob = new Blob([SW_CODE], {type:'application/javascript'});
-  navigator.serviceWorker.register(URL.createObjectURL(blob)).catch(()=>{});
+// 🧠 WebSocket DIRECT depuis le navigateur (pas de proxy)
+function edgeDirectSpeak(clean, voice){
+  return new Promise((resolve, reject) => {
+    (async () => {
+      let ws = null, settled = false;
+      const timer = setTimeout(() => {
+        if (!settled){ settled = true; try{ ws && ws.close(); }catch(e){} reject(new Error('timeout')); }
+      }, 15000);
+      try {
+        const gec = await secMsGec();
+        const url = `wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1?TrustedClientToken=${TOKEN}&Sec-MS-GEC=${gec}&Sec-MS-GEC-Version=${GEC_VERSION}`;
+        ws = new WebSocket(url);
+        const chunks = [];
+        const reqId = crypto.randomUUID();
+        const ts = () => new Date().toISOString();
+        ws.onopen = () => {
+          ws.send(
+            `X-Timestamp:${ts()}\r\nContent-Type:application/json; charset=utf-8\r\nPath:speech.config\r\n\r\n` +
+            `{"context":{"synthesis":{"audio":{"metadataoptions":{"sentenceBoundaryEnabled":"false","wordBoundaryEnabled":"false"},"outputFormat":"audio-24khz-48kbitrate-mono-mp3"}}}}\r\n`
+          );
+          ws.send(
+            `X-RequestId:${reqId}\r\nContent-Type:application/ssml; charset=utf-8\r\nPath:ssml\r\n\r\n` +
+            `<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='fr-FR'>` +
+            `<voice name='${voice}'><prosody pitch='+0Hz' rate='+0%' volume='+0%'>${esc(clean)}</prosody></voice></speak>`
+          );
+        };
+        ws.onmessage = ev => {
+          if (typeof ev.data === 'string'){
+            if (ev.data.includes('Path:turn.end')){
+              if (settled) return;
+              settled = true; clearTimeout(timer);
+              try{ ws.close(); }catch(e){}
+              playBlob(new Blob(chunks, { type:'audio/mpeg' })).then(resolve).catch(reject);
+            }
+            return;
+          }
+          const buf = new Uint8Array(ev.data);
+          if (buf.length < 2) return;
+          const hl = (buf[0] << 8) | buf[1];
+          const audio = buf.slice(2 + hl);
+          if (audio.length) chunks.push(audio);
+        };
+        ws.onerror = () => {
+          if (!settled){ settled = true; clearTimeout(timer); reject(new Error('ws error')); }
+        };
+      } catch(e){
+        if (!settled){ settled = true; clearTimeout(timer); reject(e); }
+      }
+    })();
+  });
 }
 
-// ============================================================
-// 🚀 Démarrage
-// ============================================================
-window.addEventListener('beforeunload', endTrip);
-setInterval(tripTick, 10000);
-setInterval(autoNight, 60000);
-autoNight();
+function pickBestVoice(){
+  if (!frVoices.length) return null;
+  if (voiceChoice.startsWith('sys:')){
+    const v = frVoices.find(v => v.name === voiceChoice.slice(4));
+    if (v) return v;
+  }
+  const scored = frVoices.map(v => {
+    let score = 0; const n = v.name.toLowerCase();
+    if (v.lang === 'fr-FR') score += 10;
+    if (/google/i.test(n)) score += 20;
+    if (/microsoft/i.test(n)) score += 15;
+    if (/natural|neural|premium|enhanced/i.test(n)) score += 12;
+    if (/audrey|thomas|amelie|aurelie|marie/i.test(n)) score += 8;
+    if (v.localService) score += 5;
+    return { v, score };
+  }).sort((a,b) => b.score - a.score);
+  return scored[0].v;
+}
+function systemSpeak(clean){
+  const u = new SpeechSynthesisUtterance(clean);
+  u.lang = 'fr-FR'; u.rate = 1.02;
+  const best = pickBestVoice();
+  if (best){ u.voice = best; u.lang = best.lang; }
+  speechSynthesis.speak(u);
+}
 
-initMaps();
-bindCoreUI();
-bindVoiceUI();
-bindAvatarUI();
-bindRadio();
-bindHistoryUI();
+const pollyUrl = (voice, clean) => POLLY_URL.replace('{v}', voice).replace('{t}', encodeURIComponent(clean));
+const workerUrl = (voice, clean) => `${EDGE_TTS_URL}?voice=${encodeURIComponent(voice)}&text=${encodeURIComponent(clean)}`;
 
-const storedName = localStorage.getItem('fc_name');
-const storedGroup = localStorage.getItem('fc_group');
-const storedStyle = localStorage.getItem('fc_mapStyle');
-if (storedStyle && MAP_STYLES[storedStyle]) S.currentStyle = storedStyle;
-if (pairPerson) { me.id = pairPerson; me.role = 'screen'; localStorage.setItem('fc_person', pairPerson); }
-if (storedName && storedGroup) {
-  me.name = storedName; me.group = storedGroup.toUpperCase();
-  $('#inp-name').value = me.name; $('#inp-group').value = me.group;
-  join();
-} else {
-  $('#overlay').classList.remove('hidden');
-  $('#inp-name').value = storedName || '';
-  $('#inp-group').value = params.get('g') ? params.get('g').toUpperCase() : '';
+// ---------- Parole avec chaîne de repli ----------
+export function speak(txt){
+  if (!S.voiceOn || !('speechSynthesis' in window)) return;
+  const clean = txt.replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/gu,'').trim();
+  if (!clean) return;
+  stopAll();
+
+  const engines = [];
+  if (voiceChoice.startsWith('edge:')){
+    const voice = voiceChoice.slice(5);
+    if (!edgeBroken && navigator.onLine)   engines.push(['edge',   () => edgeDirectSpeak(clean, voice)]);
+    if (!workerBroken && EDGE_TTS_URL && navigator.onLine) engines.push(['worker', () => remoteSpeak(workerUrl(voice, clean))]);
+    if (!pollyBroken && navigator.onLine)  engines.push(['polly',  () => remoteSpeak(pollyUrl('Celine', clean))]);
+  } else if (voiceChoice.startsWith('cloud:')){
+    if (!pollyBroken && navigator.onLine)  engines.push(['polly',  () => remoteSpeak(pollyUrl(voiceChoice.slice(6), clean))]);
+  }
+  engines.push(['sys', () => { systemSpeak(clean); return Promise.resolve(); }]);
+
+  (async () => {
+    for (const [name, fn] of engines){
+      try { await fn(); return; }
+      catch(e){
+        if (name === 'edge') edgeBroken = true;
+        if (name === 'worker') workerBroken = true;
+        if (name === 'polly') pollyBroken = true;
+      }
+    }
+  })();
+}
+export function testVoice(){
+  speak('Bonjour, ceci est un test de la voix sélectionnée.');
+}
+
+// ---------- Alertes ----------
+export function pushAlert(msg, type='warn', ttl=6000){
+  const el = document.createElement('div');
+  el.className = 'alert ' + type;
+  el.textContent = msg;
+  $('#alerts').prepend(el);
+  if (canVibrate && navigator.vibrate) navigator.vibrate(type==='warn'?[200,100,200]:[100]);
+  if (type==='warn') speak(msg);
+  setTimeout(()=>el.remove(), ttl);
+}
+
+export function updateStatus(){
+  if (!S.joined) { $('#status').textContent = 'hors convoi'; return; }
+  const roleTxt = me.role === 'screen' ? '📺 écran · ' : '';
+  $('#status').textContent = `${S.netIcon} ${roleTxt}${S.hidden?'position masquée · ':''}±${Math.round(me.accuracy||0)}m · ${me.speed} km/h`;
+}
+
+export function updateRoleUI(){
+  $('#role-pill').classList.toggle('hidden', !(S.joined && me.role === 'screen'));
 }
