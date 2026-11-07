@@ -24,11 +24,18 @@ export function initMaps(){
   map.addControl(new maplibregl.NavigationControl({showCompass:false}),'bottom-right');
   setMainMap(map);
 
-  // ⬅️ CORRECTION : initRadarLayer() uniquement ici, pas dans style.load
   map.on('load', () => {
     injectTrailsLayer(map, 'trails', 'trail-lines');
     initRadarLayer(); 
     bus.emit('render');
+  });
+
+  // 🚀 CORRECTION : Écoute du changement de style pour la carte principale
+  // Déclenché à chaque fois que l'utilisateur change de fond de carte
+  map.on('style.load', () => {
+    injectTrailsLayer(map, 'trails', 'trail-lines');
+    initRadarLayer(); 
+    bus.emit('render'); // Redessine les marqueurs HTML des membres
   });
   
   map.on('dragstart', () => { if (S.followId) { S.followId = null; bus.emit('follow-stop'); } });
@@ -44,6 +51,8 @@ export function changeMapStyle(styleKey){
   S.currentStyle = styleKey;
   localStorage.setItem('fc_mapStyle', styleKey);
   document.querySelectorAll('.sw-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.style === styleKey));
+  
+  // Le setStyle va déclencher les événements 'style.load' sur chaque carte
   [map, driverMap, replayMap].forEach(m => { if (m) m.setStyle(MAP_STYLES[styleKey]); });
   pushAlert(`🗺️ Carte ${STYLE_LABELS[styleKey]}`, 'info', 1800);
 }
@@ -119,8 +128,15 @@ export function initDriverMap(){
     });
     driverMap.addControl(new maplibregl.NavigationControl({showCompass:false}),'bottom-right');
     driverMap.on('dragstart', ()=> S.followMe=false);
-    driverMap.on('style.load', () => injectTrailsLayer(driverMap, 'trails-d', 'trail-lines-d'));
-    driverMap.on('load', () => injectTrailsLayer(driverMap, 'trails-d', 'trail-lines-d'));
+    
+    // 🚀 CORRECTION : Écoute du changement de style pour la carte conducteur
+    driverMap.on('style.load', () => {
+        injectTrailsLayer(driverMap, 'trails-d', 'trail-lines-d');
+        bus.emit('render'); 
+    });
+    driverMap.on('load', () => {
+        injectTrailsLayer(driverMap, 'trails-d', 'trail-lines-d');
+    });
   } else setTimeout(()=> driverMap.resize(), 50);
 }
 
@@ -143,6 +159,7 @@ function prepareReplay(){
     replayMap.fitBounds(b, {padding:50, maxZoom:16});
   }
 }
+
 export function playReplay(){
   if (!replayMap || !replayMap.getSource('replay-line') || replayPts.length < 2) return;
   cancelAnimationFrame(replayRAF);
@@ -157,6 +174,7 @@ export function playReplay(){
   };
   replayRAF = requestAnimationFrame(step);
 }
+
 export function openReplay(item, pts){
   replayPts = pts;
   const avg = item.min>0 ? Math.round(item.km/(item.min/60)) : '—';
@@ -164,18 +182,30 @@ export function openReplay(item, pts){
   $('#replay-stats').textContent = `${item.km} km · ${item.min} min · Ø ${avg} km/h · ${pts.length} pts`;
   $('#history-overlay').classList.add('hidden');
   $('#replay-overlay').classList.remove('hidden');
+  
   if (!replayMap) {
     replayMap = new maplibregl.Map({ container:'replay-map', style: MAP_STYLES[S.currentStyle], center:[2.35,48.85], zoom:5 });
+    
+    // 🚀 CORRECTION : Écoute du changement de style pour la carte de replay
     replayMap.on('style.load', () => {
       if (!replayMap.getSource('replay-line')) {
-        replayMap.addSource('replay-line', { type:'geojson', data:{ type:'Feature', geometry:{ type:'LineString', coordinates:[] } } });
+        replayMap.addSource('replay-line', { type:'geojson', data:{ type:'Feature', geometry:{ type:'LineString', coordinates:replayPts } } });
         replayMap.addLayer({ id:'replay-line-layer', type:'line', source:'replay-line',
           paint:{ 'line-width':4, 'line-color':'#1a73e8', 'line-opacity':0.85 } });
+      } else {
+        replayMap.getSource('replay-line').setData({ type:'Feature', geometry:{ type:'LineString', coordinates:replayPts } });
       }
-      prepareReplay(); playReplay();
+      prepareReplay(); 
     });
-  } else setTimeout(()=>{ replayMap.resize(); prepareReplay(); playReplay(); }, 60);
+  } else {
+      setTimeout(()=>{ 
+          replayMap.resize(); 
+          prepareReplay(); 
+          playReplay(); 
+      }, 60);
+  }
 }
+
 export function closeReplay(){
   cancelAnimationFrame(replayRAF);
   $('#replay-overlay').classList.add('hidden');
