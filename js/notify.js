@@ -1,20 +1,20 @@
 // ============================================================
-// NOTIFY v5.2 : voix système premium + Google Translate TTS
+// NOTIFY v6 : ElevenLabs (qualité studio) + voix système premium
 // ============================================================
 import { $ } from './utils.js';
 import { S, me } from './state.js';
-import { EDGE_TTS_URL } from './config.js';
+import { ELEVENLABS_API_KEY, ELEVENLABS_VOICE_ID } from './config.js';
 
 let canVibrate = false;
 document.addEventListener('pointerdown', () => { canVibrate = true; }, { once: true });
 
+// ---------- Voix système ----------
 let frVoices = [];
 let voicesLoaded = false;
 function loadVoices(){
   const all = speechSynthesis.getVoices();
   frVoices = all.filter(v => /^fr/i.test(v.lang));
   if (frVoices.length) voicesLoaded = true;
-  console.log('[TTS] voix FR :', frVoices.map(v=>`${v.name} (${v.lang})`).join(', '));
 }
 if ('speechSynthesis' in window){
   loadVoices();
@@ -22,28 +22,21 @@ if ('speechSynthesis' in window){
   setTimeout(loadVoices, 1000);
 }
 
+// ---------- Choix de voix ----------
 let voiceChoice = localStorage.getItem('fc_voice') || '';
+let elevenlabsQuota = parseInt(localStorage.getItem('fc_elevenlabs_quota') || '10000');
 
-const EDGE_VOICES = [
-  { id:'edge:fr-FR-DeniseNeural', name:'Denise 🧠', sub:'Neuronale Edge · directe navigateur · RECOMMANDÉE', icon:'🧠' },
-  { id:'edge:fr-FR-HenriNeural',  name:'Henri 🧠',  sub:'Neuronale Edge · directe navigateur', icon:'🧠' },
-  { id:'edge:fr-FR-VivienneMultilingualNeural', name:'Vivienne 🧠', sub:'Neuronale Edge · multilingue', icon:'🧠' },
-  { id:'edge:fr-FR-RemyMultilingualNeural',     name:'Rémy 🧠',     sub:'Neuronale Edge · multilingue', icon:'🧠' }
+const ELEVENLABS_VOICES = [
+  { id:'eleven:Rachel', name:'Rachel ⭐', sub:'ElevenLabs · qualité studio · 10k car/mois', icon:'⭐', voiceId:'21m00Tcm4TlvDq8ikWAM' },
+  { id:'eleven:Domi', name:'Domi ⭐', sub:'ElevenLabs · masculine', icon:'⭐', voiceId:'AZnzlk1XvdvUeBnXmlld' },
+  { id:'eleven:Bella', name:'Bella ⭐', sub:'ElevenLabs · féminine douce', icon:'⭐', voiceId:'EXAVITQu4vr4xnSDxMaL' }
 ];
-const POLLY_VOICES = [
-  { id:'cloud:Celine',  name:'Céline ☁️',  sub:'Amazon Polly · cloud gratuit', icon:'☁️' },
-  { id:'cloud:Mathieu', name:'Mathieu ☁️', sub:'Amazon Polly · cloud gratuit', icon:'☁️' }
-];
-const POLLY_URL = 'https://api.streamelements.com/kappa/v2/speech?voice={v}&text={t}';
-const GOOGLE_TTS_URL = 'https://translate.google.com/translate_tts?ie=UTF-8&q={t}&tl=fr&client=tw-ob';
-
-let edgeBroken = false, workerBroken = false, pollyBroken = false, googleBroken = false;
 
 export function listVoiceOptions(){
   if (!voicesLoaded) loadVoices();
+  const eleven = ELEVENLABS_API_KEY && elevenlabsQuota > 0 ? ELEVENLABS_VOICES : [];
   return [
-    ...EDGE_VOICES,
-    ...POLLY_VOICES,
+    ...eleven,
     ...frVoices.map(v => {
       const isPremium = /premium|enhanced|natural|neural|google|microsoft/i.test(v.name);
       return { 
@@ -59,21 +52,9 @@ export function getVoiceChoice(){ return voiceChoice; }
 export function setVoiceChoice(id){
   voiceChoice = id || '';
   if (id) localStorage.setItem('fc_voice', id); else localStorage.removeItem('fc_voice');
-  console.log('[TTS] voix choisie :', voiceChoice);
 }
 
-const TOKEN = '6A5AA1D4EAFF4E9FB37E23D68491D6F4';
-const GEC_VERSION = '1-131.0.2903.86';
-async function secMsGec(){
-  const secs = BigInt(Math.floor(Date.now() / 1000)) + 11644473600n;
-  let ticks = secs * 10000000n;
-  ticks = ticks - (ticks % 3000000000n);
-  const data = new TextEncoder().encode(ticks.toString() + TOKEN);
-  const hash = await crypto.subtle.digest('SHA-256', data);
-  return [...new Uint8Array(hash)].map(b => b.toString(16).padStart(2,'0')).join('').toUpperCase();
-}
-const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;');
-
+// ---------- Lecture ----------
 let currentAudio = null;
 function stopAll(){
   if (currentAudio){ try{ currentAudio.pause(); }catch(e){} currentAudio = null; }
@@ -84,78 +65,41 @@ function playBlob(blob){
     const a = new Audio(URL.createObjectURL(blob));
     currentAudio = a;
     a.onended = () => { currentAudio = null; res(); };
-    a.onerror = (e) => { currentAudio = null; console.error('[TTS] audio error', e); rej(new Error('audio')); };
+    a.onerror = (e) => { currentAudio = null; rej(new Error('audio')); };
     a.play().catch(rej);
   });
 }
-function remoteSpeak(url, label){
-  console.log('[TTS]', label, '→', url);
-  return fetch(url)
-    .then(r => { 
-      console.log('[TTS]', label, 'réponse HTTP', r.status);
-      if (!r.ok) throw new Error('http ' + r.status); 
-      return r.blob(); 
-    })
-    .then(b => { 
-      console.log('[TTS]', label, 'blob reçu', b.size, 'octets'); 
-      if (b.size < 100) throw new Error('blob trop petit');
-      return playBlob(b); 
-    });
-}
 
-function edgeDirectSpeak(clean, voice){
-  return new Promise((resolve, reject) => {
-    (async () => {
-      let ws = null, settled = false;
-      const timer = setTimeout(() => {
-        if (!settled){ settled = true; try{ ws && ws.close(); }catch(e){} console.log('[TTS] edge timeout'); reject(new Error('timeout')); }
-      }, 10000);
-      try {
-        const gec = await secMsGec();
-        const url = `wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1?TrustedClientToken=${TOKEN}&Sec-MS-GEC=${gec}&Sec-MS-GEC-Version=${GEC_VERSION}`;
-        console.log('[TTS] edge WS connecting...');
-        ws = new WebSocket(url);
-        const chunks = [];
-        const reqId = crypto.randomUUID();
-        const ts = () => new Date().toISOString();
-        ws.onopen = () => {
-          console.log('[TTS] edge WS ouvert');
-          ws.send(
-            `X-Timestamp:${ts()}\r\nContent-Type:application/json; charset=utf-8\r\nPath:speech.config\r\n\r\n` +
-            `{"context":{"synthesis":{"audio":{"metadataoptions":{"sentenceBoundaryEnabled":"false","wordBoundaryEnabled":"false"},"outputFormat":"audio-24khz-48kbitrate-mono-mp3"}}}}\r\n`
-          );
-          ws.send(
-            `X-RequestId:${reqId}\r\nContent-Type:application/ssml; charset=utf-8\r\nPath:ssml\r\n\r\n` +
-            `<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='fr-FR'>` +
-            `<voice name='${voice}'><prosody pitch='+0Hz' rate='+0%' volume='+0%'>${esc(clean)}</prosody></voice></speak>`
-          );
-        };
-        ws.onmessage = ev => {
-          if (typeof ev.data === 'string'){
-            if (ev.data.includes('Path:turn.end')){
-              if (settled) return;
-              settled = true; clearTimeout(timer);
-              try{ ws.close(); }catch(e){}
-              console.log('[TTS] edge terminé, chunks :', chunks.length);
-              playBlob(new Blob(chunks, { type:'audio/mpeg' })).then(resolve).catch(reject);
-            }
-            return;
-          }
-          const buf = new Uint8Array(ev.data);
-          if (buf.length < 2) return;
-          const hl = (buf[0] << 8) | buf[1];
-          const audio = buf.slice(2 + hl);
-          if (audio.length) chunks.push(audio);
-        };
-        ws.onerror = (e) => {
-          console.log('[TTS] edge WS error', e);
-          if (!settled){ settled = true; clearTimeout(timer); reject(new Error('ws error')); }
-        };
-      } catch(e){
-        console.log('[TTS] edge exception', e);
-        if (!settled){ settled = true; clearTimeout(timer); reject(e); }
-      }
-    })();
+// 🌟 ElevenLabs TTS (qualité studio)
+function elevenlabsSpeak(clean, voiceId){
+  return new Promise(async (resolve, reject) => {
+    if (!ELEVENLABS_API_KEY || elevenlabsQuota <= 0) return reject(new Error('quota épuisé ou clé absente'));
+    try {
+      console.log('[TTS] ElevenLabs →', clean.length, 'car, quota restant:', elevenlabsQuota);
+      const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+        method: 'POST',
+        headers: {
+          'xi-api-key': ELEVENLABS_API_KEY,
+          'Content-Type': 'application/json',
+          'Accept': 'audio/mpeg'
+        },
+        body: JSON.stringify({
+          text: clean,
+          model_id: 'eleven_multilingual_v2',
+          voice_settings: { stability: 0.5, similarity_boost: 0.75 }
+        })
+      });
+      if (!res.ok) throw new Error('http ' + res.status);
+      const blob = await res.blob();
+      elevenlabsQuota -= clean.length;
+      localStorage.setItem('fc_elevenlabs_quota', elevenlabsQuota);
+      console.log('[TTS] ElevenLabs OK, blob:', blob.size, 'octets');
+      await playBlob(blob);
+      resolve();
+    } catch(e) {
+      console.log('[TTS] ElevenLabs erreur:', e.message);
+      reject(e);
+    }
   });
 }
 
@@ -165,19 +109,16 @@ function pickBestVoice(){
     const v = frVoices.find(v => v.name === voiceChoice.slice(4));
     if (v) return v;
   }
-  // Priorité aux voix premium
   const scored = frVoices.map(v => {
     let score = 0; const n = v.name.toLowerCase();
     if (v.lang === 'fr-FR') score += 10;
     if (/premium|enhanced/i.test(n)) score += 25;
     if (/google/i.test(n)) score += 20;
     if (/microsoft/i.test(n)) score += 15;
-    if (/natural|neural/i.test(n)) score += 12;
-    if (/audrey|thomas|amelie|aurelie|marie|henri/i.test(n)) score += 8;
+    if (/audrey|thomas|amelie|aurelie|marie|henri|julie|hortense|paul/i.test(n)) score += 8;
     if (v.localService) score += 5;
     return { v, score };
   }).sort((a,b) => b.score - a.score);
-  console.log('[TTS] meilleure voix système :', scored[0].v.name, '(score:', scored[0].score, ')');
   return scored[0].v;
 }
 function systemSpeak(clean){
@@ -189,27 +130,18 @@ function systemSpeak(clean){
   speechSynthesis.speak(u);
 }
 
-const pollyUrl = (voice, clean) => POLLY_URL.replace('{v}', voice).replace('{t}', encodeURIComponent(clean));
-const workerUrl = (voice, clean) => `${EDGE_TTS_URL}?voice=${encodeURIComponent(voice)}&text=${encodeURIComponent(clean)}`;
-const googleUrl = (clean) => GOOGLE_TTS_URL.replace('{t}', encodeURIComponent(clean));
-
+// ---------- Parole avec chaîne de repli ----------
 export function speak(txt){
-  if (!S.voiceOn || !('speechSynthesis' in window)) { console.log('[TTS] désactivé'); return; }
+  if (!S.voiceOn || !('speechSynthesis' in window)) return;
   const clean = txt.replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/gu,'').trim();
   if (!clean) return;
   stopAll();
   console.log('[TTS] speak :', clean, '| choix :', voiceChoice);
 
   const engines = [];
-  if (voiceChoice.startsWith('edge:')){
-    const voice = voiceChoice.slice(5);
-    if (!edgeBroken && navigator.onLine)   engines.push(['edge',   () => edgeDirectSpeak(clean, voice)]);
-    if (!workerBroken && EDGE_TTS_URL && navigator.onLine) engines.push(['worker', () => remoteSpeak(workerUrl(voice, clean), 'worker')]);
-    if (!pollyBroken && navigator.onLine)  engines.push(['polly',  () => remoteSpeak(pollyUrl('Celine', clean), 'polly')]);
-    if (!googleBroken && navigator.onLine) engines.push(['google', () => remoteSpeak(googleUrl(clean), 'google')]);
-  } else if (voiceChoice.startsWith('cloud:')){
-    if (!pollyBroken && navigator.onLine)  engines.push(['polly',  () => remoteSpeak(pollyUrl(voiceChoice.slice(6), clean), 'polly')]);
-    if (!googleBroken && navigator.onLine) engines.push(['google', () => remoteSpeak(googleUrl(clean), 'google')]);
+  if (voiceChoice.startsWith('eleven:') && ELEVENLABS_API_KEY && elevenlabsQuota > 0){
+    const voice = ELEVENLABS_VOICES.find(v => v.id === voiceChoice);
+    if (voice) engines.push(['eleven', () => elevenlabsSpeak(clean, voice.voiceId)]);
   }
   engines.push(['sys', () => { systemSpeak(clean); return Promise.resolve(); }]);
 
@@ -223,10 +155,6 @@ export function speak(txt){
       }
       catch(e){
         console.log('[TTS] échec :', name, '→', e.message);
-        if (name === 'edge') edgeBroken = true;
-        if (name === 'worker') workerBroken = true;
-        if (name === 'polly') pollyBroken = true;
-        if (name === 'google') googleBroken = true;
       }
     }
   })();
@@ -235,6 +163,7 @@ export function testVoice(){
   speak('Bonjour, ceci est un test de la voix sélectionnée.');
 }
 
+// ---------- Alertes ----------
 export function pushAlert(msg, type='warn', ttl=6000){
   const el = document.createElement('div');
   el.className = 'alert ' + type;
