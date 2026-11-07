@@ -27,12 +27,36 @@ let voiceChoice = localStorage.getItem('fc_voice') || '';
 let elevenlabsQuota = parseInt(localStorage.getItem('fc_elevenlabs_quota') || '10000');
 
 const ELEVENLABS_VOICES = [
-  { id:'eleven:Rachel', name:'Greg ⭐', sub:'ElevenLabs · masculine chaleureuse', icon:'⭐', voiceId:'OOiDJrD1goukqfTpiySr' },
-  { id:'eleven:Domi', name:'Guillaume ⭐', sub:'ElevenLabs · masculine posée', icon:'⭐', voiceId:'Qrl71rx6Yg8RvyPYRGCQ' },
-  { id:'eleven:Bella', name:'Bella ⭐', sub:'ElevenLabs · féminine douce', icon:'⭐', voiceId:'EXAVITQu4vr4xnSDxMaL' },
-  { id:'eleven:Antoni', name:'Antoni ⭐', sub:'ElevenLabs · masculine chaleureuse', icon:'⭐', voiceId:'ErXwobaYiN019PkySvjV' },
-  { id:'eleven:Adam', name:'Adam ⭐', sub:'ElevenLabs · masculine profonde (style GPS)', icon:'⭐', voiceId:'pNInz6obbf5AWCGqNKO0' },
-  { id:'eleven:Charlotte', name:'Charlotte ⭐', sub:'ElevenLabs · féminine énergique', icon:'⭐', voiceId:'XB0fDUnXU5powFXDhCwa' }
+  // ===== MASCULINES (priorité) =====
+  { id:'eleven:Adam', name:'Adam ⭐', sub:'Masculine · profonde · autoritaire (style GPS)', icon:'🎙️', voiceId:'pNInz6obbf5AWCGqNKO0' },
+  { id:'eleven:Antoni', name:'Antoni ⭐', sub:'Masculine · chaleureuse · bien articulée', icon:'🎙️', voiceId:'ErXwobaYiN019PkySvjV' },
+  { id:'eleven:Arnold', name:'Arnold ⭐', sub:'Masculine · puissante · cinématographique', icon:'🎙️', voiceId:'VR6AewLTigWG4xSOukaG' },
+  { id:'eleven:Callum', name:'Callum ⭐', sub:'Masculine · posée · britannique', icon:'🎙️', voiceId:'N2lVS1w4EtoT3dr4eOWO' },
+  { id:'eleven:Charlie', name:'Charlie ⭐', sub:'Masculine · jeune · dynamique', icon:'🎙️', voiceId:'IKne3meq5aSn9XLyUdCD' },
+  { id:'eleven:Daniel', name:'Daniel ⭐', sub:'Masculine · mature · sérieuse', icon:'🎙️', voiceId:'onwK4e9ZLuTAKqWW03F9' },
+  { id:'eleven:Domi', name:'Domi ⭐', sub:'Masculine · grave · narrative', icon:'🎙️', voiceId:'AZnzlk1XvdvUeBnXmlld' },
+  { id:'eleven:George', name:'George ⭐', sub:'Masculine · britannique · posée', icon:'🎙️', voiceId:'JBFqnCBsd6RMkjVDRZzb' },
+  { id:'eleven:Harry', name:'Harry ⭐', sub:'Masculine · jeune · naturelle', icon:'🎙️', voiceId:'SOYHLrncvK2XfJeWVJMC' },
+  { id:'eleven:Jeremy', name:'Jeremy ⭐', sub:'Masculine · claire · professionnelle', icon:'🎙️', voiceId:'xjXZHg0NfH3hBk29qJzD' },
+  { id:'eleven:Josh', name:'Josh ⭐', sub:'Masculine · décontractée · jeune', icon:'🎙️', voiceId:'TxGEqnHWrfWFTfGW9XjX' },
+  { id:'eleven:Liam', name:'Liam ⭐', sub:'Masculine · douce · apaisante', icon:'🎙️', voiceId:'TX3etaxciqllxv4CnJ7B' },
+  { id:'eleven:Marcus', name:'Marcus ⭐', sub:'Masculine · énergique · motivante', icon:'🎙️', voiceId:'PnIz85gkLkTl2rbg9c67' },
+  { id:'eleven:River', name:'River ⭐', sub:'Masculine · calme · réfléchie', icon:'🎙️', voiceId:'SAJ9Wz1j6HJm4eVOC2sC' },
+  { id:'eleven:Sam', name:'Sam ⭐', sub:'Masculine · neutre · polyvalente', icon:'🎙️', voiceId:'yoZ06aJxZJJ22mfd3PQQu' },
+  { id:'eleven:Bill', name:'Bill ⭐', sub:'Masculine · âgée · sage', icon:'🎙️', voiceId:'pqHfZKP75CvOlQylNhV4' },
+  
+  // ===== FÉMININES =====
+  { id:'eleven:Rachel', name:'Rachel ⭐', sub:'Féminine · naturelle · dynamique', icon:'🎙️', voiceId:'21m00Tcm4TlvDq8ikWAM' },
+  { id:'eleven:Bella', name:'Bella ⭐', sub:'Féminine · douce · apaisante', icon:'🎙️', voiceId:'EXAVITQu4vr4xnSDxMaL' },
+  { id:'eleven:Charlotte', name:'Charlotte ⭐', sub:'Féminine · énergique · jeune', icon:'🎙️', voiceId:'XB0fDUnXU5powFXDhCwa' },
+  { id:'eleven:Emily', name:'Emily ⭐', sub:'Féminine · claire · professionnelle', icon:'🎙️', voiceId:'pzQFXX6719iJcXEWpGPV' },
+  { id:'eleven:Freya', name:'Freya ⭐', sub:'Féminine · mature · sophistiquée', icon:'🎙️', voiceId:'jsCqWAovK2LkecY7zXl4' },
+  { id:'eleven:Grace', name:'Grace ⭐', sub:'Féminine · élégante · posée', icon:'🎙️', voiceId:'oWAxZDx7w5VEj9dCyTzz' },
+  { id:'eleven:Lily', name:'Lily ⭐', sub:'Féminine · enfantine · douce', icon:'🎙️', voiceId:'pFZP5JQG7iQjIQuC4Bku' },
+  { id:'eleven:Matilda', name:'Matilda ⭐', sub:'Féminine · britannique · chaleureuse', icon:'🎙️', voiceId:'XrExE9yKIg1WjnnlVkGX' },
+  { id:'eleven:Nicole', name:'Nicole ⭐', sub:'Féminine · nerveuse · expressive', icon:'🎙️', voiceId:'piTKgcLEGmPE4e6mEKli' },
+  { id:'eleven:Alice', name:'Alice ⭐', sub:'Féminine · douce · narrative', icon:'🎙️', voiceId:'Xb7hH8MSUJpSbSDYk0k2' },
+  { id:'eleven:Dorothy', name:'Dorothy ⭐', sub:'Féminine · âgée · chaleureuse', icon:'🎙️', voiceId:'ThT5KcBeYPX3keUQqHPh' }
 ];
 
 export function listVoiceOptions(){
