@@ -176,5 +176,63 @@
 </div>
 
 <script type="module" src="js/app.js"></script>
+  <!-- Réglages Radars -->
+<div class="overlay hidden" id="radar-overlay">
+  <div class="card">
+    <h1>📷 Réglages Radars</h1>
+
+    <label>Rayon d'affichage sur la carte</label>
+    <select id="radar-radius" class="setting-select">
+      <option value="5">5 km (très proche)</option>
+      <option value="10">10 km (proche)</option>
+      <option value="25">25 km (moyen)</option>
+      <option value="50">50 km (large)</option>
+      <option value="100">100 km (très large)</option>
+      <option value="0">Tous les radars de France</option>
+    </select>
+
+    <label>Distance d'alerte vocale</label>
+    <select id="radar-alert" class="setting-select">
+      <option value="0.2">200 mètres</option>
+      <option value="0.5">500 mètres (recommandé)</option>
+      <option value="1">1 kilomètre</option>
+      <option value="2">2 kilomètres</option>
+    </select>
+
+    <label>Vitesse minimale pour alerter</label>
+    <select id="radar-minspeed" class="setting-select">
+      <option value="0">Toujours alerter</option>
+      <option value="30">Dès 30 km/h</option>
+      <option value="50">Dès 50 km/h (recommandé)</option>
+      <option value="70">Dès 70 km/h</option>
+      <option value="90">Dès 90 km/h</option>
+    </select>
+
+    <label>Type de son d'alerte</label>
+    <select id="radar-sound" class="setting-select">
+      <option value="voice">🗣️ Voix seule</option>
+      <option value="beep">🔔 Bip seul</option>
+      <option value="both">🗣️🔔 Voix + Bip</option>
+      <option value="silent">🔇 Silencieux (visuel seul)</option>
+    </select>
+
+    <label>Types de radars à afficher</label>
+    <div class="radar-types">
+      <label class="checkbox-label">
+        <input type="checkbox" id="radar-fixed" checked> 📷 Fixes
+      </label>
+      <label class="checkbox-label">
+        <input type="checkbox" id="radar-mobile" checked> 🚨 Mobiles
+      </label>
+      <label class="checkbox-label">
+        <input type="checkbox" id="radar-vma" checked> Afficher VMA
+      </label>
+    </div>
+
+    <button id="btn-radar-apply" class="btn-primary">✅ Appliquer les réglages</button>
+    <button id="btn-radar-reset" class="btn-ghost">🔄 Réinitialiser</button>
+    <button id="btn-close-radar" class="btn-ghost">Fermer</button>
+  </div>
+</div>
 </body>
 </html>
