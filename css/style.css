@@ -198,3 +198,21 @@ body.night .maplibregl-canvas{filter:invert(1) hue-rotate(180deg) brightness(.9)
 
 /* ===== Signalement ===== */
 #report-overlay .card{max-width:400px}
+
+/* Réglages Radars */
+.setting-select{
+  width:100%;padding:11px 13px;border:2px solid transparent;
+  border-radius:12px;background:rgba(127,127,127,.13);
+  font-size:14px;font-weight:600;color:var(--text);
+  margin-top:4px;cursor:pointer;
+}
+.setting-select:focus{outline:none;border-color:var(--accent)}
+.radar-types{display:flex;flex-wrap:wrap;gap:10px;margin-top:6px}
+.checkbox-label{
+  display:flex;align-items:center;gap:6px;
+  padding:8px 14px;border-radius:12px;
+  background:rgba(127,127,127,.13);
+  cursor:pointer;font-size:13px;font-weight:600;
+  user-select:none;
+}
+.checkbox-label input{accent-color:var(--accent);width:16px;height:16px}
