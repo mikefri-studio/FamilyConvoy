@@ -1,5 +1,5 @@
 // ============================================================
-// APP v3 : assemblage — GPS, Firebase, voix, radars, événements
+// APP v4 : GPS, Firebase, voix, radars (CSV+RadarZen), signalements
 // ============================================================
 import { MAP_STYLES, TESLA_WORKER_URL } from './config.js';
 import { $, haversineKm, bearingDeg, ago, freshDev, colorFor, bus } from './utils.js';
@@ -13,6 +13,7 @@ import { render, updateFollowPill, bindCoreUI, autoNight } from './ui.js';
 import { tripTick, endTrip, resumeTrip, pruneHistory, bindHistoryUI } from './trips.js';
 import { bindRadio, playRadio } from './radio.js';
 import { loadRadars, updateRadarLayer, checkRadarAlert, toggleRadars, isRadarsEnabled, getSettings, saveSettings } from './radars.js';
+import { addReport } from './radarzen.js';
 import * as MAP from './map.js';
 
 // ============================================================
@@ -120,7 +121,7 @@ function startSharing(){
   }).catch(()=>{});
 
   loadEmblem(me.group);
-  loadRadars(); // ⬅️ Charge les radars
+  loadRadars(); // ⬅️ Charge CSV + RadarZen
   setTimeout(updateRoutes, 4000);
   updateRoleUI(); updateStatus();
   resumeTrip();
@@ -140,7 +141,6 @@ setInterval(() => {
   } else {
     R.update(S.refs.myRef, payload);
   }
-  // ⬅️ Vérifie les radars toutes les 5s
   checkRadarAlert();
   updateRadarLayer();
 }, 5000);
@@ -263,7 +263,7 @@ async function updateRoutes(){
 setInterval(updateRoutes, 30000);
 
 // ============================================================
-// 🗣️ Annonce vocale du véhicule le plus proche
+// 🗣️ Annonce vocale véhicule le plus proche
 // ============================================================
 setInterval(()=>{
   if (!S.joined || !S.voiceOn) return;
@@ -289,7 +289,7 @@ setInterval(()=>{
 }, 120000);
 
 // ============================================================
-// ⚡ Tesla (optionnel)
+// ⚡ Tesla
 // ============================================================
 if (TESLA_WORKER_URL) {
   $('#btn-tesla').classList.remove('hidden');
@@ -339,10 +339,10 @@ $('#btn-toggle-hide').onclick = () => {
   if (S.hidden) {
     R.update(S.refs.myRef, { hidden:true, lat:null, lng:null, speed:0 });
     R.set(S.refs.deviceRef, null);
-    pushAlert('👻 Position masquée — tu vois le convoi, personne ne te voit','info');
+    pushAlert('👻 Position masquée','info');
   } else {
     R.update(S.refs.myRef, { hidden:false });
-    pushAlert('👁 Position visible à nouveau','success');
+    pushAlert('👁 Position visible','success');
   }
   $('#btn-toggle-hide').textContent = S.hidden ? '👁 Rendre ma position visible' : '👻 Cacher ma position';
   $('#menu-overlay').classList.add('hidden');
@@ -352,7 +352,7 @@ $('#btn-switch').onclick = () => {
   $('#menu-overlay').classList.add('hidden');
   const old = me.group;
   leaveGroup(false); showJoinOverlay(true);
-  pushAlert(`🔁 Quitté ${old} — rejoins un autre convoi`,'info');
+  pushAlert(`🔁 Quitté ${old}`,'info');
 };
 $('#btn-quit').onclick = () => {
   $('#menu-overlay').classList.add('hidden');
@@ -390,8 +390,8 @@ function openShare(mode){
     : `${location.origin}${location.pathname}?g=${me.group}`;
   $('#share-title').textContent = mode === 'pair' ? '🔗 Mon autre appareil' : '📤 Inviter';
   $('#share-mode-hint').textContent = mode === 'pair'
-    ? 'À scanner sur UN DE TES appareils (tablette, 2e téléphone…) : il rejoindra sans créer de doublon.'
-    : 'Partage ce lien pour inviter une nouvelle personne dans le convoi.';
+    ? 'Scanne ce QR sur ton autre appareil.'
+    : 'Partage ce lien pour inviter.';
   $('#share-link-text').textContent = S.shareLink;
   $('#qr-box').innerHTML = '';
   new QRCode($('#qr-box'), { text: S.shareLink, width: 200, height: 200, correctLevel: QRCode.CorrectLevel.M });
@@ -410,7 +410,7 @@ function openVoiceOverlay(){
   const options = listVoiceOptions();
   const current = getVoiceChoice();
   if (!options.length){
-    list.innerHTML = '<div class="row"><span>⚠️ Aucune voix détectée sur cet appareil.</span></div>';
+    list.innerHTML = '<div class="row"><span>⚠️ Aucune voix détectée.</span></div>';
   } else {
     list.innerHTML = options.map(o => {
       const isActive = o.id === current;
@@ -462,6 +462,8 @@ function openRadarSettings(){
   $('#radar-sound').value = s.alertSound;
   $('#radar-fixed').checked = s.showFixed;
   $('#radar-mobile').checked = s.showMobile;
+  $('#radar-reports').checked = s.showReports;
+  $('#radar-radarzen').checked = s.useRadarZen;
   $('#radar-vma').checked = s.showVMA;
   $('#radar-overlay').classList.remove('hidden');
 }
@@ -471,12 +473,8 @@ $('#btn-radar').onclick = () => {
   $('#btn-radar').classList.toggle('active', on);
   pushAlert(on ? '📷 Radars activés' : '📷 Radars désactivés', 'info', 2000);
 };
-
-// Appui long = ouvrir les réglages
 let radarPressTimer = null;
-$('#btn-radar').addEventListener('pointerdown', () => {
-  radarPressTimer = setTimeout(openRadarSettings, 600);
-});
+$('#btn-radar').addEventListener('pointerdown', () => { radarPressTimer = setTimeout(openRadarSettings, 600); });
 $('#btn-radar').addEventListener('pointerup', () => clearTimeout(radarPressTimer));
 $('#btn-radar').addEventListener('pointercancel', () => clearTimeout(radarPressTimer));
 
@@ -488,28 +486,66 @@ $('#btn-radar-apply').onclick = () => {
     alertSound: $('#radar-sound').value,
     showFixed: $('#radar-fixed').checked,
     showMobile: $('#radar-mobile').checked,
+    showReports: $('#radar-reports').checked,
+    useRadarZen: $('#radar-radarzen').checked,
     showVMA: $('#radar-vma').checked
   });
-  pushAlert('✅ Réglages radars appliqués', 'success', 2000);
+  pushAlert('✅ Réglages appliqués', 'success', 2000);
   $('#radar-overlay').classList.add('hidden');
+  loadRadars().then(() => updateRadarLayer());
 };
 
 $('#btn-radar-reset').onclick = () => {
   saveSettings({
     displayRadius: 25, alertDist: 0.5, minSpeed: 30,
-    alertSound: 'voice', showFixed: true, showMobile: true, showVMA: true
+    alertSound: 'voice', showFixed: true, showMobile: true,
+    showReports: true, useRadarZen: true, showVMA: true
   });
   openRadarSettings();
-  pushAlert('🔄 Réglages réinitialisés', 'info', 2000);
+  pushAlert('🔄 Réinitialisé', 'info', 2000);
+  loadRadars().then(() => updateRadarLayer());
 };
 
 $('#btn-close-radar').onclick = () => $('#radar-overlay').classList.add('hidden');
 
 // ============================================================
+// 📍 Signalement
+// ============================================================
+$('#btn-report').onclick = () => {
+  if (!me.lat){
+    pushAlert('⚠️ Position GPS non disponible', 'warn');
+    return;
+  }
+  $('#report-pos').textContent = `${me.lat.toFixed(5)}, ${me.lng.toFixed(5)}`;
+  $('#report-desc').value = '';
+  $('#report-overlay').classList.remove('hidden');
+};
+
+$('#btn-report-send').onclick = async () => {
+  const type = $('#report-type').value;
+  const desc = $('#report-desc').value.trim();
+  const btn = $('#btn-report-send');
+  btn.textContent = '⏳ Envoi...';
+  btn.disabled = true;
+  const ok = await addReport(type, desc);
+  btn.textContent = '📤 Envoyer';
+  btn.disabled = false;
+  if (ok){
+    pushAlert('✅ Signalement envoyé !', 'success', 3000);
+    $('#report-overlay').classList.add('hidden');
+    loadRadars().then(() => updateRadarLayer());
+  } else {
+    pushAlert('❌ Erreur lors de l\'envoi', 'warn');
+  }
+};
+
+$('#btn-close-report').onclick = () => $('#report-overlay').classList.add('hidden');
+
+// ============================================================
 // 📲 Service worker PWA
 // ============================================================
 const SW_CODE = `
-const CACHE = 'fc-v19';
+const CACHE = 'fc-v20';
 self.addEventListener('install', e => { self.skipWaiting(); });
 self.addEventListener('activate', e => { e.waitUntil(self.clients.claim()); });
 self.addEventListener('fetch', e => {
