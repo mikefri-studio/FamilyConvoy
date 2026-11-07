@@ -164,3 +164,14 @@ body.driver .driver-ui{display:flex}
 
 /* Nuit : carte */
 body.night .maplibregl-canvas{filter:invert(1) hue-rotate(180deg) brightness(.9) saturate(.6)}
+
+/* ===== Marqueurs radar ===== */
+.radar-marker{
+  width:32px;height:32px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:22px;
+  filter:drop-shadow(0 2px 4px rgba(0,0,0,.5));
+  cursor:pointer;
+  transition:transform .2s;
+}
+.radar-marker:hover{transform:scale(1.3)}
