@@ -1,9 +1,9 @@
 // ============================================================
 // RADARS : chargement CSV + affichage carte + alerte proximité
-// Source : https://github.com/mikefri-studio/RadarApp (CSV officiel)
+// Source : https://github.com/mikefri-studio/RadarApp
 // Tout est LOCAL : pas de quota Firebase
 // ============================================================
-import { $, haversineKm } from './utils.js';
+import { haversineKm } from './utils.js';
 import { S, me } from './state.js';
 import { pushAlert, speak } from './notify.js';
 
@@ -11,18 +11,18 @@ const RADAR_CSV_URL = 'https://raw.githubusercontent.com/mikefri-studio/RadarApp
 const RADAR_CACHE_KEY = 'fc_radars_cache';
 const RADAR_CACHE_TTL = 7 * 86400000; // 7 jours
 const RADAR_ALERT_DIST = 0.5;   // km → alerte vocale
-const RADAR_SHOW_DIST = 3;      // km → affichage sur carte
 const RADAR_MARKER_DIST = 8;    // km → marqueurs DOM
 
 let radars = [];
 let radarMarkers = {};
 let radarEnabled = localStorage.getItem('fc_radars_enabled') !== 'false';
-let alertedRadars = new Set(); // évite de répéter l'alerte
+let alertedRadars = new Set();
+let mainMap = null;
 
 // Parse le CSV (séparateur ;)
 function parseCSV(text){
   const lines = text.trim().split('\n');
-  const header = lines[0].split(';').map(h => h.trim());
+  if (lines.length < 2) return [];
   return lines.slice(1).map(line => {
     const cols = line.split(';');
     if (cols.length < 6) return null;
@@ -31,9 +31,9 @@ function parseCSV(text){
     if (isNaN(lat) || isNaN(lng)) return null;
     return {
       id: cols[0].trim(),
-      type: cols[1].trim(),           // ETD, ETD; (mobile), etc.
+      type: cols[1].trim(),
       date: cols[2].trim(),
-      vma: parseInt(cols[3]) || null, // vitesse max autorisée
+      vma: parseInt(cols[3]) || null,
       lat, lng,
       isMobile: /mobile|portable|remorqu/i.test(cols[1])
     };
@@ -80,10 +80,8 @@ function makeRadarMarker(r){
 
 // Met à jour les marqueurs visibles
 export function updateRadarMarkers(){
-  if (!radarEnabled || !maplibregl) return;
-  if (me.lat == null) return;
+  if (!radarEnabled || me.lat == null || !mainMap) return;
 
-  // Marqueurs dans le rayon d'affichage
   const visible = nearbyRadars(me.lat, me.lng, RADAR_MARKER_DIST);
   const visibleIds = new Set(visible.map(r => r.id));
 
@@ -98,13 +96,9 @@ export function updateRadarMarkers(){
   // Ajoute les nouveaux
   for (const r of visible){
     if (!radarMarkers[r.id]){
-      const map = document.querySelector('#map')?.__map; // à passer en paramètre
-      // On utilise la carte principale via un setter
-      if (window.__mainMap){
-        radarMarkers[r.id] = new maplibregl.Marker({ element: makeRadarMarker(r) })
-          .setLngLat([r.lng, r.lat])
-          .addTo(window.__mainMap);
-      }
+      radarMarkers[r.id] = new maplibregl.Marker({ element: makeRadarMarker(r) })
+        .setLngLat([r.lng, r.lat])
+        .addTo(mainMap);
     }
   }
 }
@@ -118,9 +112,10 @@ export function checkRadarAlert(){
     alertedRadars.add(r.id);
     const type = r.isMobile ? 'mobile' : 'fixe';
     const vma = r.vma ? ` · ${r.vma} km/h` : '';
-    const msg = `⚠️ Radar ${type}${vma} à ${Math.round(haversineKm(me.lat, me.lng, r.lat, r.lng) * 1000)} mètres`;
+    const dist = Math.round(haversineKm(me.lat, me.lng, r.lat, r.lng) * 1000);
+    const msg = `⚠️ Radar ${type}${vma} à ${dist} mètres`;
     pushAlert(msg, 'warn', 8000);
-    speak(`Radar ${type} à ${Math.round(haversineKm(me.lat, me.lng, r.lat, r.lng) * 1000)} mètres`);
+    speak(`Radar ${type} à ${dist} mètres`);
   }
   // Reset les alertes quand on s'éloigne
   alertedRadars = new Set(
@@ -144,7 +139,7 @@ export function toggleRadars(){
 }
 export function isRadarsEnabled(){ return radarEnabled; }
 
-// Expose la carte principale (appelé par map.js après init)
+// Expose la carte principale
 export function setMainMap(map){
-  window.__mainMap = map;
+  mainMap = map;
 }
