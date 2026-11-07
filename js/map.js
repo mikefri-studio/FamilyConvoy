@@ -7,7 +7,7 @@ import { S, me, getAll } from './state.js';
 import { $, haversineKm, ago, bus } from './utils.js';
 import { pushAlert } from './notify.js';
 import { applyAvatarToEl } from './avatar.js';
-import { setMainMap } from './radars.js';
+import { setMainMap, initRadarLayer } from './radars.js';
 
 export let map = null, driverMap = null, replayMap = null;
 let replayMarker = null, replayRAF = null, replayPts = [];
@@ -23,9 +23,17 @@ function injectTrailsLayer(m, sourceName, layerName){
 export function initMaps(){
   map = new maplibregl.Map({ container:'map', style: MAP_STYLES[S.currentStyle], center:[2.35,48.85], zoom:5 });
   map.addControl(new maplibregl.NavigationControl({showCompass:false}),'bottom-right');
-  setMainMap(map); // ⬅️ Expose la carte aux radars
-  map.on('style.load', () => { injectTrailsLayer(map, 'trails', 'trail-lines'); bus.emit('render'); });
-  map.on('load', () => injectTrailsLayer(map, 'trails', 'trail-lines'));
+  setMainMap(map);
+
+  map.on('style.load', () => {
+    injectTrailsLayer(map, 'trails', 'trail-lines');
+    initRadarLayer(); // ⬅️ Initialise la couche radars
+    bus.emit('render');
+  });
+  map.on('load', () => {
+    injectTrailsLayer(map, 'trails', 'trail-lines');
+    initRadarLayer();
+  });
   map.on('dragstart', () => { if (S.followId) { S.followId = null; bus.emit('follow-stop'); } });
 
   document.querySelectorAll('.sw-btn').forEach(btn => {
