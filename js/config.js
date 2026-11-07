@@ -1,7 +1,11 @@
 // ============================================================
-// CONFIG : clés API, styles de carte, emojis, palette
+// CONFIG : clés API, styles de carte, emojis, palette, TTS
 // ============================================================
 export const MAPTILER_KEY = 'nJnYbbeBVl4T09PtkVVv';
+
+// URL de ton worker Cloudflare (proxy TTS Edge de secours)
+// Laisse '' si tu ne l'utilises pas — le moteur s'en passe très bien
+export const EDGE_TTS_URL = 'https://convoy-tts.mikefri-app.workers.dev';
 
 const ignRasterStyle = (layer, format, maxzoom) => ({
   version: 8,
@@ -36,6 +40,6 @@ export const FIREBASE_CONFIG = {
 
 export const TESLA_WORKER_URL = "";
 
-export const EMOJIS = ['🚗','','🚕','️','🚌','','🏍️','','','⛄','','🌟','❤️','😎','','','🐶','','🦊','','🐼','','🐸',''];
+export const EMOJIS = ['🚗','','🚕','️','🚌','','️','','','⛄','','','❤️','😎','','','🐶','','🦊','','🐼','','',''];
 
 export const PALETTE = ['#e53935','#8e24aa','#3949ab','#00897b','#f4511e','#6d4c41','#d81b60','#1e88e5'];
