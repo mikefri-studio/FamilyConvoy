@@ -542,26 +542,38 @@ $('#btn-report-send').onclick = async () => {
 $('#btn-close-report').onclick = () => $('#report-overlay').classList.add('hidden');
 
 // ============================================================
-// 📲 Service worker PWA
+// 📲 Service Worker PWA (NOUVEAU : fichier statique sw.js)
+// Remplace l'ancien système "Blob" qui bloquait les mises à jour
 // ============================================================
-const SW_CODE = `
-const CACHE = 'fc-v20';
-self.addEventListener('install', e => { self.skipWaiting(); });
-self.addEventListener('activate', e => { e.waitUntil(self.clients.claim()); });
-self.addEventListener('fetch', e => {
-  if (e.request.method !== 'GET') return;
-  e.respondWith(
-    caches.open(CACHE).then(c =>
-      c.match(e.request).then(r => r || fetch(e.request).then(res => {
-        if (res.ok && e.request.url.startsWith('http')) c.put(e.request, res.clone());
-        return res;
-      }).catch(()=>r))
-    )
-  );
-});`;
 if ('serviceWorker' in navigator) {
-  const blob = new Blob([SW_CODE], {type:'application/javascript'});
-  navigator.serviceWorker.register(URL.createObjectURL(blob)).catch(()=>{});
+  // 1️⃣ Tuer l'ancien service worker "blob:" qui bloque les MAJ
+  navigator.serviceWorker.getRegistrations().then(registrations => {
+    for (const registration of registrations) {
+      if (registration.active && registration.active.scriptURL.startsWith('blob:')) {
+        console.log('[App] Suppression de l\'ancien SW Blob');
+        registration.unregister();
+      }
+    }
+  });
+  
+  // 2️⃣ Enregistrer le vrai fichier sw.js (à la racine du repo)
+  const swUrl = new URL('../sw.js', import.meta.url).href;
+  navigator.serviceWorker.register(swUrl, { updateViaCache: 'none' })
+    .then(registration => {
+      console.log('[App] SW enregistré :', swUrl);
+      // Vérifier régulièrement s'il y a une nouvelle version (toutes les heures)
+      setInterval(() => registration.update(), 60 * 60 * 1000);
+    })
+    .catch(err => console.error('[App] Erreur enregistrement SW:', err));
+  
+  // 3️⃣ Recharger automatiquement la page quand un nouveau SW prend le contrôle
+  let refreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (refreshing) return;
+    refreshing = true;
+    console.log('[App] Nouveau SW actif, rechargement de la page...');
+    window.location.reload();
+  });
 }
 
 // ============================================================
