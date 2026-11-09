@@ -1,6 +1,6 @@
 // ============================================================
-// RADARS v3 : fusion CSV GitHub + Firestore RadarZen
-// + signalements communautaires en temps réel
+// RADARS v4 : fusion CSV GitHub + Firestore RadarZen
+// + signalements temps réel + AUTO-RÉPARATION des couches
 // ============================================================
 import { haversineKm } from './utils.js';
 import { S, me } from './state.js';
@@ -72,8 +72,8 @@ function parseCSV(text){
 // ---------- Chargement ----------
 export async function loadRadars(){
   loadSettings();
-  
-  // Charge RadarZen en parallèle
+
+  // Charge / rafraîchit RadarZen
   if (settings.useRadarZen) await initRadarZen();
 
   // Charge CSV GitHub (cache 7 jours)
@@ -93,7 +93,7 @@ export async function loadRadars(){
   if (settings.useRadarZen){
     const rzRadars = getRadarzenRadars();
     const rzReports = getRadarzenReports();
-    
+
     const existingCoords = new Set(radars.map(r => `${r.lat.toFixed(4)},${r.lng.toFixed(4)}`));
     for (const r of rzRadars){
       const key = `${r.lat.toFixed(4)},${r.lng.toFixed(4)}`;
@@ -109,6 +109,7 @@ export async function loadRadars(){
 
   buildGeoJSON();
   console.log('[Radars] total :', radars.length);
+  updateRadarLayer();
 }
 
 async function downloadCSV(){
@@ -168,10 +169,27 @@ function getFilteredRadars(){
   });
 }
 
+// ---------- Affichage + AUTO-RÉPARATION ----------
 export function updateRadarLayer(){
-  if (!mainMap || !radarGeoJSON) return;
-  const source = mainMap.getSource('radars');
-  if (!source) return;
+  if (!mainMap) return;
+
+  // 🛡️ AUTO-RÉPARATION : si un changement de fond de carte a détruit
+  // la source, on recrée toute la couche immédiatement.
+  // (appelé toutes les 5s par app.js → réparation garantie, sans
+  //  dépendre des événements MapLibre)
+  if (!mainMap.getSource('radars')) {
+    if (!settings.enabled) return;
+    console.warn('[Radars] Couche manquante → recréation automatique');
+    initRadarLayer();
+    return;
+  }
+
+  // 🛡️ CORRECTION BUG BOUTON : si radars désactivés, on VIDE la couche
+  // (avant, le tick 5s la remplissait quand même → bouton "sans effet")
+  if (!settings.enabled || !radarGeoJSON) {
+    mainMap.getSource('radars').setData({ type:'FeatureCollection', features:[] });
+    return;
+  }
 
   const filtered = getFilteredRadars();
   const filteredIds = new Set(filtered.map(r => r.id));
@@ -179,7 +197,7 @@ export function updateRadarLayer(){
     type: 'FeatureCollection',
     features: radarGeoJSON.features.filter(f => filteredIds.has(f.properties.id))
   };
-  source.setData(fc);
+  mainMap.getSource('radars').setData(fc);
 }
 
 // ---------- Alertes ----------
@@ -198,7 +216,7 @@ export function checkRadarAlert(){
   for (const r of close){
     if (alertedRadars.has(r.id)) continue;
     alertedRadars.add(r.id);
-    
+
     let msg = '';
     if (r.isReport){
       const typeLabel = {
@@ -253,10 +271,7 @@ function playBeep(){
 export function toggleRadars(){
   settings.enabled = !settings.enabled;
   saveSettings({ enabled: settings.enabled });
-  if (settings.enabled) updateRadarLayer();
-  else if (mainMap && mainMap.getSource('radars')) {
-      mainMap.getSource('radars').setData({ type: 'FeatureCollection', features: [] });
-  }
+  updateRadarLayer(); // ✅ fonctionne maintenant sur TOUTES les cartes
   return settings.enabled;
 }
 export function isRadarsEnabled(){ return settings.enabled; }
@@ -265,14 +280,12 @@ export function isRadarsEnabled(){ return settings.enabled; }
 export function initRadarLayer(){
   if (!mainMap) return;
 
-  // 🛡️ CORRECTION CRUCIALE : Nettoyage avant recréation
-  // Quand on change de fond de carte (style.load), cette fonction est rappelée.
-  // Sans ce nettoyage, MapLibre planterait avec "Layer already exists".
+  // 🛡️ Nettoyage avant recréation (évite "Layer already exists")
   if (mainMap.getLayer('radar-labels')) mainMap.removeLayer('radar-labels');
   if (mainMap.getLayer('radar-circles')) mainMap.removeLayer('radar-circles');
   if (mainMap.getSource('radars')) mainMap.removeSource('radars');
 
-  // 🛡️ Nettoyage des événements pour éviter les doublons (qui spammeraient les popups)
+  // 🛡️ Nettoyage des événements (évite les popups doublonnés)
   mainMap.off('click', 'radar-circles');
   mainMap.off('mouseenter', 'radar-circles');
   mainMap.off('mouseleave', 'radar-circles');
@@ -339,3 +352,15 @@ export function initRadarLayer(){
 
   updateRadarLayer();
 }
+
+// ---------- 🔍 Hooks de debug (console F12) ----------
+window.FC_RADARS = {
+  hasSource: () => !!(mainMap && mainMap.getSource('radars')),
+  hasLayer:  () => !!(mainMap && mainMap.getLayer('radar-circles')),
+  count:     () => radars.length,
+  visible:   () => {
+    const s = mainMap && mainMap.getSource('radars');
+    return s ? s.serialize().data.features.length : -1;
+  },
+  enabled:   () => settings.enabled
+};
