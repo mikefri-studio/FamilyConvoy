@@ -1,5 +1,5 @@
 // ============================================================
-// RADARZEN : connexion à Firestore (radars + signalements)
+// RADARZEN : connexion Firestore (radars + signalements)
 // ============================================================
 import { S, me } from './state.js';
 
@@ -13,26 +13,31 @@ const RADARZEN_CONFIG = {
 };
 
 let db2 = null;
+let fsCollection = null, fsGetDocs = null, fsAddDoc = null;
 let radarzenRadars = [];
 let radarzenReports = [];
 let radarzenLoaded = false;
 
-async function initRadarZen(){
-  if (db2) return;
+export async function initRadarZen(){
   try {
-    const { initializeApp } = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js');
-    const { getFirestore, collection, getDocs } = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js');
-    const app2 = initializeApp(RADARZEN_CONFIG, 'radarzen');
-    db2 = getFirestore(app2);
-    await loadRadarZenData(collection, getDocs);
+    if (!db2) {
+      const { initializeApp } = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js');
+      const fs = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js');
+      fsCollection = fs.collection; fsGetDocs = fs.getDocs; fsAddDoc = fs.addDoc;
+      const app2 = initializeApp(RADARZEN_CONFIG, 'radarzen');
+      db2 = fs.getFirestore(app2);
+    }
+    // 🔄 CORRECTION : rafraîchit les données à CHAQUE appel
+    // (sinon les nouveaux signalements n'apparaissaient jamais)
+    await loadRadarZenData();
   } catch(e){
     console.error('[RadarZen] init erreur :', e.message);
   }
 }
 
-async function loadRadarZenData(collection, getDocs){
+async function loadRadarZenData(){
   try {
-    const radarsSnap = await getDocs(collection(db2, 'radars'));
+    const radarsSnap = await fsGetDocs(fsCollection(db2, 'radars'));
     radarzenRadars = radarsSnap.docs.map(doc => {
       const d = doc.data();
       return {
@@ -49,7 +54,7 @@ async function loadRadarZenData(collection, getDocs){
       };
     }).filter(r => r.lat && r.lng);
 
-    const reportsSnap = await getDocs(collection(db2, 'reports'));
+    const reportsSnap = await fsGetDocs(fsCollection(db2, 'reports'));
     radarzenReports = reportsSnap.docs.map(doc => {
       const d = doc.data();
       return {
@@ -75,17 +80,16 @@ async function loadRadarZenData(collection, getDocs){
 export async function addReport(type, description){
   if (!db2 || !me.lat) return false;
   try {
-    const { collection, addDoc } = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js');
-    await addDoc(collection(db2, 'reports'), {
+    await fsAddDoc(fsCollection(db2, 'reports'), {
       type,
       description: description || '',
       lat: me.lat,
-      lng: me.lng, // ⬅️ 'lng' pour matcher les règles
+      lng: me.lng,
       timestamp: Date.now(),
       userId: me.id,
       userName: me.name,
-      confirmations: 1,  // ⬅️ Requis par les règles
-      dismissals: 0      // ⬅️ Requis par les règles
+      confirmations: 1,
+      dismissals: 0
     });
     console.log('[RadarZen] report ajouté avec succès');
     return true;
@@ -98,4 +102,3 @@ export async function addReport(type, description){
 export function getRadarzenRadars(){ return radarzenRadars; }
 export function getRadarzenReports(){ return radarzenReports; }
 export function isRadarZenLoaded(){ return radarzenLoaded; }
-export { initRadarZen };
