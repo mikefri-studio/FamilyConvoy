@@ -54,3 +54,8 @@ export const ELEVENLABS_API_KEY = 'sk_a6fa1480643b469256cc6e253bc8eba0a7908fb5ad
 
 // Voix par défaut (Rachel = féminine naturelle, multilingue)
 export const ELEVENLABS_VOICE_ID = '21m00Tcm4TlvDq8ikWAM'; 
+
+// ============================================================
+// ROUTING : Worker Cloudflare pour OpenRouteService
+// ============================================================
+export const ROUTING_WORKER_URL = 'https://family-convoy-routes.ton-username.workers.dev';
