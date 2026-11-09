@@ -6,7 +6,7 @@
 // Tous les utilisateurs recevront automatiquement la nouvelle version
 // ============================================================
 
-const VERSION = 'fc-v21';
+const VERSION = 'fc-v22';
 
 // Installation : on active immédiatement le nouveau SW
 self.addEventListener('install', event => {
