@@ -1,7 +1,7 @@
 // ============================================================
 // APP v4 : GPS, Firebase, voix, radars (CSV+RadarZen), signalements
 // ============================================================
-import { MAP_STYLES, TESLA_WORKER_URL } from './config.js';
+import { MAP_STYLES, TESLA_WORKER_URL, ROUTING_WORKER_URL } from './config.js';
 import { $, haversineKm, bearingDeg, ago, freshDev, colorFor, bus } from './utils.js';
 import { S, me, getAll } from './state.js';
 import { pushAlert, speak, updateStatus, updateRoleUI,
@@ -241,24 +241,49 @@ function detectAlerts(){
 }
 
 // ============================================================
-// 🛣️ Itinéraires OSRM
+// 🛣️ Itinéraires via Worker Cloudflare (OpenRouteService)
 // ============================================================
 async function updateRoutes(){
-  if (!S.joined || me.lat == null) return;
+  if (!S.joined || me.lat == null || !ROUTING_WORKER_URL) return;
+  
   const all = getAll();
   const jobs = [];
+  
   for (const [id, v] of Object.entries(all)) {
     if (id === me.id || v.lat == null) continue;
+    
+    // Cache de 60 secondes pour éviter de spammer l'API
     const rc = S.routeCache[id];
-    if (rc && Date.now()-rc.ts < 60000) continue;
+    if (rc && Date.now() - rc.ts < 60000) continue;
+    
+    // Appeler notre Worker Cloudflare (qui appelle OpenRouteService)
+    const workerUrl = `${ROUTING_WORKER_URL}?start=${me.lng},${me.lat}&end=${v.lng},${v.lat}`;
+    
     jobs.push(
-      fetch(`https://router.project-osrm.org/route/v1/driving/${me.lng},${me.lat};${v.lng},${v.lat}?overview=false`)
-        .then(r=>r.json())
-        .then(j=>{ if (j.code==='Ok' && j.routes && j.routes[0]) S.routeCache[id] = { km:j.routes[0].distance/1000, min:Math.round(j.routes[0].duration/60), ts:Date.now() }; })
-        .catch(()=>{})
+      fetch(workerUrl)
+        .then(r => r.json())
+        .then(j => {
+          // Parser la réponse OpenRouteService
+          if (j.features && j.features[0]) {
+            const props = j.features[0].properties;
+            S.routeCache[id] = {
+              km: props.summary.distance / 1000, // Convertir mètres → km
+              min: Math.round(props.summary.duration / 60), // Convertir secondes → minutes
+              ts: Date.now()
+            };
+          }
+        })
+        .catch(e => {
+          console.warn('[Routes] Erreur Worker :', e.message);
+          // Pas de pushAlert pour éviter de spammer l'utilisateur
+        })
     );
   }
-  if (jobs.length) { await Promise.allSettled(jobs); render(); }
+  
+  if (jobs.length) {
+    await Promise.allSettled(jobs);
+    render();
+  }
 }
 setInterval(updateRoutes, 30000);
 
