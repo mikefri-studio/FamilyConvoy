@@ -58,4 +58,4 @@ export const ELEVENLABS_VOICE_ID = '21m00Tcm4TlvDq8ikWAM';
 // ============================================================
 // ROUTING : Worker Cloudflare pour OpenRouteService
 // ============================================================
-export const ROUTING_WORKER_URL = 'https://family-convoy-routes.ton-username.workers.dev';
+export const ROUTING_WORKER_URL = 'https://family-convoy-routes.mikefri-app.workers.dev/';
