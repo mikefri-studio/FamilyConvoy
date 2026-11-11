@@ -1,11 +1,11 @@
 // ============================================================
-// NAVIGATION : guidage turn-by-turn gratuit (Valhalla FR + OSRM secours)
-// + recherche Nominatim + destination membre/carte/favori
-// + voix + recalcul auto + relais Waze / Google Maps
+// NAVIGATION v2 : guidage turn-by-turn (Valhalla FR + OSRM secours)
+// + tracé bleu AUTO-RÉPARANT sur les 2 cartes + aperçu itinéraire
+// + recherche Nominatim + membre/carte/favori + voix + Waze/Maps
 // ============================================================
 import { map, driverMap } from './map.js';
 import { S, me, getAll } from './state.js';
-import { $, haversineKm, bus } from './utils.js';
+import { $, haversineKm } from './utils.js';
 import { pushAlert, speak } from './notify.js';
 
 const VALHALLA  = 'https://valhalla1.openstreetmap.de/route';
@@ -13,9 +13,12 @@ const OSRM      = 'https://router.project-osrm.org/route/v1/driving/';
 const NOMINATIM = 'https://nominatim.openstreetmap.org/search';
 const FAV_KEY   = 'fc_nav_favs';
 
+const SRC='nav-route', CASING='nav-route-casing', LINE='nav-route-line';
+const SRC_D='nav-route-d', CASING_D='nav-route-casing-d', LINE_D='nav-route-line-d';
+
 let nav = null;
 let searchTimer = null;
-let layerHooked = false;
+const hooked = new WeakSet();
 
 // ---------- Utilitaires géo ----------
 function decodePolyline(str, precision = 6){
@@ -40,7 +43,6 @@ function buildCum(coords){
 }
 const fmtDist = m => m < 1000 ? `${Math.round(m/10)*10} m` : `${(m/1000).toFixed(1)} km`;
 
-// ---------- Icônes de manœuvre ----------
 function iconFor(t){
   switch (t){
     case 2: case 10: case 11: case 18: case 20: return '↱';
@@ -56,7 +58,7 @@ function iconFor(t){
   }
 }
 
-// ---------- Itinéraire Valhalla (instructions FR natives) ----------
+// ---------- Itinéraires ----------
 async function routeValhalla(from, to){
   const r = await fetch(VALHALLA, {
     method: 'POST',
@@ -80,8 +82,6 @@ async function routeValhalla(from, to){
     summary: { km: j.trip.summary.length, min: j.trip.summary.time / 60 }
   };
 }
-
-// ---------- Secours OSRM (manœuvres traduites en FR) ----------
 function osrmType(st){
   const m = st.maneuver || {}, t = m.type || '', mod = m.modifier || '';
   if (t === 'depart') return 1;
@@ -135,24 +135,70 @@ async function routeOSRM(from, to){
   return { coords, maneuvers, summary: { km: rt.distance / 1000, min: rt.duration / 60 } };
 }
 
-// ---------- Couche carte (auto-réparation au changement de fond) ----------
+// ---------- Couche tracé : AUTO-RÉPARATION sur les 2 cartes ----------
+function ensureOn(m, src, casing, line){
+  if (!m) return;
+  if (!hooked.has(m)){
+    hooked.add(m);
+    const re = () => { if (nav){ ensureOn(m, src, casing, line); paint(m, src); } };
+    m.on('style.load', re);
+    m.on('load', re);
+  }
+  try {
+    if (!m.getSource(src))
+      m.addSource(src, { type:'geojson', data:{ type:'Feature', geometry:{ type:'LineString', coordinates:[] } } });
+    if (!m.getLayer(casing))
+      m.addLayer({ id:casing, type:'line', source:src,
+        layout:{ 'line-cap':'round', 'line-join':'round' },
+        paint:{ 'line-color':'#0d47a1', 'line-width':9, 'line-opacity':0.9 } });
+    if (!m.getLayer(line))
+      m.addLayer({ id:line, type:'line', source:src,
+        layout:{ 'line-cap':'round', 'line-join':'round' },
+        paint:{ 'line-color':'#42a5f5', 'line-width':5, 'line-opacity':0.95 } });
+  } catch(e){ console.warn('[Nav] couche :', e.message); }
+}
+function paint(m, src){
+  if (!m || !nav || !nav.coords || nav.coords.length < 2) return;
+  const s = m.getSource(src);
+  if (s) s.setData({ type:'Feature', geometry:{ type:'LineString', coordinates: nav.coords } });
+}
 function ensureLayer(){
-  if (!map) return;
-  if (!layerHooked){
-    map.on('style.load', () => { if (nav){ ensureLayer(); drawRoute(); } });
-    layerHooked = true;
-  }
-  if (!map.getSource('nav-route')){
-    map.addSource('nav-route', { type:'geojson', data:{ type:'Feature', geometry:{ type:'LineString', coordinates:[] } } });
-    map.addLayer({ id:'nav-route-casing', type:'line', source:'nav-route',
-      paint:{ 'line-color':'#0d47a1', 'line-width':9, 'line-opacity':0.9 } });
-    map.addLayer({ id:'nav-route-line', type:'line', source:'nav-route',
-      paint:{ 'line-color':'#42a5f5', 'line-width':5, 'line-opacity':0.95 } });
-  }
+  ensureOn(map, SRC, CASING, LINE);
+  ensureOn(driverMap, SRC_D, CASING_D, LINE_D);
 }
 function drawRoute(){
-  if (map && map.getSource('nav-route') && nav)
-    map.getSource('nav-route').setData({ type:'Feature', geometry:{ type:'LineString', coordinates: nav.coords } });
+  paint(map, SRC);
+  paint(driverMap, SRC_D);
+  if (map) map.triggerRepaint();
+  if (driverMap) driverMap.triggerRepaint();
+}
+function clearRoute(){
+  for (const [m, src] of [[map, SRC], [driverMap, SRC_D]]){
+    if (m && m.getSource(src))
+      m.getSource(src).setData({ type:'Feature', geometry:{ type:'LineString', coordinates:[] } });
+  }
+}
+function overview(){
+  if (!nav || nav.coords.length < 2) return;
+  const b = new maplibregl.LngLatBounds();
+  nav.coords.forEach(p => b.extend(p));
+  if (map) map.fitBounds(b, { padding:70, maxZoom:15, duration:800 });
+  if (driverMap) driverMap.fitBounds(b, { padding:70, maxZoom:15, duration:800 });
+  nav.overviewUntil = Date.now() + 6000; // 6 s pour voir tout le tracé
+}
+
+// ---------- Drapeau destination ----------
+function flagEl(){
+  const el = document.createElement('div');
+  el.className = 'marker'; el.textContent = '🏁'; el.style.fontSize = '30px';
+  return el;
+}
+function ensureDestMarkers(){
+  if (!nav) return;
+  if (map && !nav.destMarker) nav.destMarker = new maplibregl.Marker({ element: flagEl() }).addTo(map);
+  if (driverMap && !nav.destMarkerD) nav.destMarkerD = new maplibregl.Marker({ element: flagEl() }).addTo(driverMap);
+  if (nav.destMarker) nav.destMarker.setLngLat([nav.dest.lng, nav.dest.lat]);
+  if (nav.destMarkerD) nav.destMarkerD.setLngLat([nav.dest.lng, nav.dest.lat]);
 }
 
 // ---------- Bandeau ----------
@@ -168,7 +214,7 @@ function etaText(remainKm){
   return `${remainKm.toFixed(1)} km · ${Math.max(1, Math.round(remainKm / speed))} min`;
 }
 
-// ---------- Cœur navigation ----------
+// ---------- Cœur ----------
 function memberPos(){
   const v = getAll()[nav.memberId];
   return (v && v.lat != null) ? { lat: v.lat, lng: v.lng, name: v.name } : null;
@@ -189,13 +235,8 @@ async function computeRoute(){
   nav.total = nav.cum[nav.cum.length - 1];
   nav.maneuvers = r.maneuvers; nav.summary = r.summary;
   nav.idx = 0; nav.announced = new Set();
-  if (!nav.destMarker){
-    const el = document.createElement('div');
-    el.className = 'marker'; el.textContent = '🏁'; el.style.fontSize = '30px';
-    nav.destMarker = new maplibregl.Marker({ element: el }).addTo(map);
-  }
-  nav.destMarker.setLngLat([nav.dest.lng, nav.dest.lat]);
-  ensureLayer(); drawRoute(); updateBanner();
+  ensureLayer(); drawRoute(); ensureDestMarkers(); overview(); updateBanner();
+  console.log('[Nav] itinéraire :', nav.coords.length, 'points,', nav.total.toFixed(2), 'km');
 }
 function nearestIndex(){
   const c = nav.coords;
@@ -241,10 +282,12 @@ function arrive(){
 
 export function navigationTick(){
   if (!nav || me.lat == null || !map) return;
+  // 🛡️ AUTO-RÉPARATION : couche + tracé vérifiés à chaque tick
+  ensureLayer(); drawRoute(); ensureDestMarkers();
+
   if (nav.memberId){
     const mp = memberPos();
     if (!mp){ pushAlert('📵 Membre perdu, navigation arrêtée', 'warn'); stopNavigation(); return; }
-    if (nav.destMarker) nav.destMarker.setLngLat([mp.lng, mp.lat]);
     if (haversineKm(mp.lat, mp.lng, nav.dest.lat, nav.dest.lng) > 0.2 && Date.now() - nav.lastMemberRefresh > 30000){
       nav.lastMemberRefresh = Date.now();
       nav.dest.lat = mp.lat; nav.dest.lng = mp.lng;
@@ -263,6 +306,9 @@ export function navigationTick(){
   const nm = nextManeuver();
   if (nm) announce(nm, Math.max(0, nav.cum[nm.begin] - nav.cum[nav.idx]) * 1000);
   updateBanner();
+
+  // Caméra : seulement après l'aperçu de 6 s
+  if (Date.now() < (nav.overviewUntil || 0)) return;
   const bearing = S.myHeading != null ? S.myHeading : 0;
   if (S.driverMode && driverMap) driverMap.easeTo({ center:[me.lng, me.lat], zoom:16, bearing, pitch:50, duration:900 });
   else map.easeTo({ center:[me.lng, me.lat], zoom:16, bearing, pitch:45, duration:900 });
@@ -273,7 +319,7 @@ export async function startNavigation(dest){
   stopNavigation(true);
   nav = { dest:{ ...dest }, memberId: dest.memberId || null, coords:[], cum:[], total:0,
           maneuvers:[], idx:0, announced:new Set(), lastReroute:0, lastMemberRefresh:0,
-          computing:false, destMarker:null, summary:null };
+          computing:false, destMarker:null, destMarkerD:null, summary:null, overviewUntil:0 };
   S.followId = null; S.followMe = false;
   $('#btn-nav').classList.add('active');
   $('#nav-banner').classList.remove('hidden');
@@ -283,10 +329,12 @@ export async function startNavigation(dest){
   if (nav) speak('Navigation démarrée vers ' + nav.dest.name);
 }
 export function stopNavigation(silent){
-  if (nav && nav.destMarker) nav.destMarker.remove();
+  if (nav){
+    if (nav.destMarker) nav.destMarker.remove();
+    if (nav.destMarkerD) nav.destMarkerD.remove();
+  }
   nav = null;
-  if (map && map.getSource('nav-route'))
-    map.getSource('nav-route').setData({ type:'Feature', geometry:{ type:'LineString', coordinates:[] } });
+  clearRoute();
   $('#nav-banner').classList.add('hidden');
   $('#btn-nav').classList.remove('active');
   S.followMe = true;
@@ -300,7 +348,7 @@ const setFavs = f => localStorage.setItem(FAV_KEY, JSON.stringify(f));
 function addFav(f){ const a = getFavs(); a.push(f); setFavs(a); }
 function removeFav(i){ const a = getFavs(); a.splice(i, 1); setFavs(a); }
 
-// ---------- Overlay destination ----------
+// ---------- Overlay ----------
 function renderMembers(){
   const all = getAll();
   const rows = Object.entries(all).filter(([id, v]) => id !== me.id && v.lat != null)
@@ -331,7 +379,7 @@ export function openNavOverlay(){
   $('#nav-overlay').classList.remove('hidden');
 }
 
-// ---------- Bindings UI ----------
+// ---------- Bindings ----------
 export function bindNavigationUI(){
   $('#btn-nav').onclick = () => { if (nav) stopNavigation(); else openNavOverlay(); };
   $('#btn-close-nav').onclick = () => $('#nav-overlay').classList.add('hidden');
@@ -372,3 +420,13 @@ export function bindNavigationUI(){
   $('#btn-nav-maps').onclick = () => { if (nav) window.open(`https://www.google.com/maps/dir/?api=1&destination=${nav.dest.lat},${nav.dest.lng}`, '_blank'); };
   renderFavs();
 }
+
+// ---------- 🔍 Debug console (F12) ----------
+window.FC_NAV = {
+  active:    () => !!nav,
+  points:    () => nav ? nav.coords.length : 0,
+  hasSource: () => !!(map && map.getSource(SRC)),
+  hasLayer:  () => !!(map && map.getLayer(LINE)),
+  drawn:     () => { const s = map && map.getSource(SRC); return s ? s.serialize().data.geometry.coordinates.length : -1; },
+  redraw:    () => { ensureLayer(); drawRoute(); }
+};
