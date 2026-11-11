@@ -25,6 +25,22 @@
 
 <div class="alerts" id="alerts"></div>
 
+<!-- Bandeau de guidage navigation -->
+<div class="nav-banner glass hidden" id="nav-banner">
+  <div class="nav-main">
+    <div class="nav-icon" id="nav-icon">⬆</div>
+    <div class="nav-txt">
+      <div class="nav-instr" id="nav-instr">—</div>
+      <div class="nav-sub"><span id="nav-dist"></span><span id="nav-eta"></span></div>
+    </div>
+    <button class="nav-stop" id="btn-nav-stop">✕</button>
+  </div>
+  <div class="nav-actions">
+    <button id="btn-nav-waze">🚦 Waze</button>
+    <button id="btn-nav-maps">🗺️ Maps</button>
+  </div>
+</div>
+
 <div class="panel glass" id="panel">
   <div class="panel-head" id="panel-head">
     <span>🚗 Convoi <span class="badge" id="convoy-count">0</span></span>
@@ -38,6 +54,7 @@
   <button class="dock-btn" id="btn-history"><span class="ico">📊</span><span class="lbl">Trajets</span></button>
   <button class="dock-btn active" id="btn-voice"><span class="ico">🔊</span><span class="lbl">Voix</span></button>
   <button class="dock-btn drive" id="btn-driver"><span class="ico">🚗</span><span class="lbl">Conduite</span></button>
+  <button class="dock-btn" id="btn-nav"><span class="ico">🧭</span><span class="lbl">Nav</span></button>
   <button class="dock-btn" id="btn-radar"><span class="ico">📷</span><span class="lbl">Radars</span></button>
   <button class="dock-btn" id="btn-report"><span class="ico">📍</span><span class="lbl">Signaler</span></button>
   <button class="dock-btn" id="btn-night"><span class="ico">🌙</span><span class="lbl">Nuit</span></button>
@@ -139,6 +156,23 @@
   </div>
 </div>
 
+<!-- Navigation : choix destination -->
+<div class="overlay hidden" id="nav-overlay">
+  <div class="card">
+    <h1>🧭 Où va-t-on ?</h1>
+    <label>Adresse ou lieu</label>
+    <input id="nav-search" placeholder="Ex : 12 rue de la Paix, Paris">
+    <div id="nav-results" class="nav-list"></div>
+    <label>Membres du convoi</label>
+    <div id="nav-members" class="nav-list"></div>
+    <label>Favoris</label>
+    <div id="nav-favs" class="nav-list"></div>
+    <button id="btn-nav-fav-add" class="btn-ghost">⭐ Enregistrer ma position</button>
+    <button id="btn-nav-pick" class="btn-ghost">📍 Choisir sur la carte</button>
+    <button id="btn-close-nav" class="btn-ghost">Fermer</button>
+  </div>
+</div>
+
 <!-- Réglages Radars -->
 <div class="overlay hidden" id="radar-overlay">
   <div class="card">
@@ -175,7 +209,7 @@
     <select id="radar-sound" class="setting-select">
       <option value="voice">🗣️ Voix seule</option>
       <option value="beep">🔔 Bip seul</option>
-      <option value="both">🗣️🔔 Voix + Bip</option>
+      <option value="both">🗣️ Voix + Bip</option>
       <option value="silent">🔇 Silencieux</option>
     </select>
 
@@ -255,6 +289,6 @@
   </div>
 </div>
 
-<script type="module" src="js/app.js?v=2"></script>
+<script type="module" src="js/app.js?v=3"></script>
 </body>
 </html>
