@@ -1,15 +1,14 @@
 // ============================================================
-// NAVIGATION v5 : minimale et anti-crash
-// - OSRM uniquement (GeoJSON direct, timeout 8 s)
-// - Aucune caméra, aucun marqueur ajouté (zéro smart_wrap)
-// - Suivi caméra via le follow existant (S.followId = moi)
-// - Une seule couche ligne, recréée proprement au changement de style
+// NAVIGATION v6 : VALHALLA (instructions FR natives) en principal
+// + OSRM en secours auto. Anti-crash : zéro caméra, zéro marqueur,
+// une seule couche ligne, timeouts réseau, try/catch partout.
 // ============================================================
 import { map } from './map.js';
 import { S, me, getAll } from './state.js';
 import { $, haversineKm } from './utils.js';
 import { pushAlert, speak } from './notify.js';
 
+const VALHALLA  = 'https://valhalla1.openstreetmap.de/route';
 const OSRM      = 'https://router.project-osrm.org/route/v1/driving/';
 const NOMINATIM = 'https://nominatim.openstreetmap.org/search';
 const FAV_KEY   = 'fc_nav_favs';
@@ -22,14 +21,31 @@ let hooked = false;
 const safe = fn => { try { fn(); } catch(e){ console.warn('[Nav]', e.message); } };
 const ready = m => !!(m && m.isStyleLoaded && m.isStyleLoaded());
 
-async function fetchTimeout(url, ms = 8000){
+async function fetchTimeout(url, opts = {}, ms = 8000){
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), ms);
   try {
-    const r = await fetch(url, { signal: ctrl.signal });
+    const r = await fetch(url, { ...opts, signal: ctrl.signal });
     if (!r.ok) throw new Error('http ' + r.status);
     return r;
   } finally { clearTimeout(t); }
+}
+
+// ---------- Décodage polyline Valhalla (précision 6) ----------
+function decodePolyline(str, precision = 6){
+  let index = 0, lat = 0, lng = 0, shift = 0, result = 0, byte = null;
+  const coords = [];
+  const factor = Math.pow(10, precision);
+  while (index < str.length){
+    shift = 0; result = 0;
+    do { byte = str.charCodeAt(index++) - 63; result |= (byte & 0x1f) << shift; shift += 5; } while (byte >= 0x20);
+    lat += ((result & 1) ? ~(result >> 1) : (result >> 1));
+    shift = 0; result = 0;
+    do { byte = str.charCodeAt(index++) - 63; result |= (byte & 0x1f) << shift; shift += 5; } while (byte >= 0x20);
+    lng += ((result & 1) ? ~(result >> 1) : (result >> 1));
+    coords.push([lng / factor, lat / factor]);
+  }
+  return coords.filter(p => isFinite(p[0]) && isFinite(p[1]));
 }
 
 function buildCum(coords){
@@ -50,9 +66,43 @@ function iconFor(t){
     case 26: case 27: return '🔄';
     case 4: case 5: case 6: return '🏁';
     case 25: return '⤵';
+    case 28: case 29: return '⛴';
     default: return '⬆';
   }
 }
+
+// ---------- Moteur 1 : VALHALLA (FR natif) ----------
+async function routeValhalla(from, to){
+  const r = await fetchTimeout(VALHALLA, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      locations: [{ lat: from.lat, lon: from.lng }, { lat: to.lat, lon: to.lng }],
+      costing: 'auto',
+      directions_options: { language: 'fr-FR', units: 'kilometers' }
+    })
+  }, 6000);
+  const j = await r.json();
+  const leg = j.trip && j.trip.legs && j.trip.legs[0];
+  if (!leg || !leg.shape) throw new Error('réponse Valhalla invalide');
+  const coords = decodePolyline(leg.shape, 6);
+  if (coords.length < 2) throw new Error('tracé Valhalla vide');
+  return {
+    engine: 'Valhalla',
+    coords,
+    maneuvers: (leg.maneuvers || []).map(m => ({
+      begin: m.begin_shape_index || 0,
+      end:   m.end_shape_index || 0,
+      text:  m.instruction || '',
+      type:  m.type || 0,
+      time:  m.time || 0
+    })),
+    summary: { km: (j.trip.summary && j.trip.summary.length) || 0,
+               min: ((j.trip.summary && j.trip.summary.time) || 0) / 60 }
+  };
+}
+
+// ---------- Moteur 2 : OSRM (secours, traduction FR) ----------
 function osrmType(st){
   const m = st.maneuver || {}, t = m.type || '', mod = m.modifier || '';
   if (t === 'depart') return 1;
@@ -88,14 +138,13 @@ function osrmText(st){
   }
   return name ? base + ' sur ' + name : base;
 }
-
 async function routeOSRM(from, to){
-  const r = await fetchTimeout(`${OSRM}${from.lng},${from.lat};${to.lng},${to.lat}?steps=true&geometries=geojson&overview=full`);
+  const r = await fetchTimeout(`${OSRM}${from.lng},${from.lat};${to.lng},${to.lat}?steps=true&geometries=geojson&overview=full`, {}, 8000);
   const j = await r.json();
   const rt = j.routes && j.routes[0];
-  if (!rt) throw new Error('itinéraire introuvable');
+  if (!rt) throw new Error('itinéraire OSRM introuvable');
   const coords = (rt.geometry.coordinates || []).filter(p => isFinite(p[0]) && isFinite(p[1]));
-  if (coords.length < 2) throw new Error('tracé vide');
+  if (coords.length < 2) throw new Error('tracé OSRM vide');
   let idx = 0; const maneuvers = [];
   for (const leg of rt.legs || []) for (const st of leg.steps || []) {
     const n = (st.geometry && st.geometry.coordinates) ? st.geometry.coordinates.length : 1;
@@ -103,7 +152,7 @@ async function routeOSRM(from, to){
     maneuvers.push({ begin, end, text: osrmText(st), type: osrmType(st) });
     idx = end;
   }
-  return { coords, maneuvers, summary: { km: rt.distance / 1000, min: rt.duration / 60 } };
+  return { engine: 'OSRM', coords, maneuvers, summary: { km: rt.distance / 1000, min: rt.duration / 60 } };
 }
 
 // ---------- Couche ligne unique ----------
@@ -178,16 +227,22 @@ async function computeRoute(){
     const to = nav.memberId ? memberPos() : nav.dest;
     if (!to) throw new Error('destination indisponible');
     nav.dest.lat = to.lat; nav.dest.lng = to.lng;
-    const r = await routeOSRM({ lat: me.lat, lng: me.lng }, to);
+    let r = null;
+    try {
+      r = await routeValhalla({ lat: me.lat, lng: me.lng }, to);
+    } catch(ev){
+      console.warn('[Nav] Valhalla KO (' + ev.message + ') → secours OSRM');
+      r = await routeOSRM({ lat: me.lat, lng: me.lng }, to);
+    }
     if (!nav) return;
     nav.coords = r.coords; nav.cum = buildCum(r.coords);
     nav.total = nav.cum[nav.cum.length - 1];
-    nav.maneuvers = r.maneuvers; nav.summary = r.summary;
+    nav.maneuvers = r.maneuvers; nav.summary = r.summary; nav.engine = r.engine;
     nav.idx = 0; nav.announced = new Set(); nav.offCount = 0;
     setTimeout(() => { ensureLayer(); setRouteData(); }, 0);
-    console.log('[Nav] OK :', nav.coords.length, 'points,', nav.total.toFixed(2), 'km');
+    console.log('[Nav] OK via', r.engine, ':', nav.coords.length, 'points,', nav.total.toFixed(2), 'km');
   } catch(e){
-    console.warn('[Nav] échec :', e.message);
+    console.warn('[Nav] échec total :', e.message);
     pushAlert('❌ Itinéraire impossible (' + e.message + ')', 'warn', 5000);
     stopNavigation(true);
     return;
@@ -263,9 +318,9 @@ export async function startNavigation(dest){
   if (me.lat == null || me.lng == null){ pushAlert('⚠️ GPS requis pour naviguer', 'warn'); return; }
   stopNavigation(true);
   nav = { dest:{ ...dest }, memberId: dest.memberId || null, coords:[], cum:[], total:0,
-          maneuvers:[], idx:0, announced:new Set(), offCount:0,
+          maneuvers:[], idx:0, announced:new Set(), offCount:0, engine:null,
           lastReroute:0, lastMemberRefresh:0, computing:false, summary:null };
-  S.followId = me.id;   // caméra via le follow existant (stable)
+  S.followId = me.id;
   $('#btn-nav').classList.add('active');
   $('#nav-banner').classList.remove('hidden');
   $('#nav-overlay').classList.add('hidden');
@@ -307,7 +362,7 @@ async function search(q){
   if (q.length < 3){ box.innerHTML = ''; return; }
   box.innerHTML = '<div class="nav-empty">Recherche…</div>';
   try {
-    const r = await fetchTimeout(`${NOMINATIM}?format=json&q=${encodeURIComponent(q)}&limit=5&accept-language=fr`, 7000);
+    const r = await fetchTimeout(`${NOMINATIM}?format=json&q=${encodeURIComponent(q)}&limit=5&accept-language=fr`, {}, 7000);
     const j = await r.json();
     box.innerHTML = j.length ? j.map(x =>
       `<div class="nav-item" data-lat="${x.lat}" data-lng="${x.lon}" data-name="${(x.display_name||'').replace(/"/g,'&quot;')}">📍 ${(x.display_name||'').slice(0,60)}</div>`).join('')
@@ -362,7 +417,8 @@ export function bindNavigationUI(){
 }
 
 window.FC_NAV = {
-  active: () => !!nav,
-  points: () => nav ? nav.coords.length : 0,
-  drawn:  () => { const s = map && map.getSource(SRC); return s ? s.serialize().data.geometry.coordinates.length : -1; }
+  active:  () => !!nav,
+  engine:  () => nav ? nav.engine : null,
+  points:  () => nav ? nav.coords.length : 0,
+  drawn:   () => { const s = map && map.getSource(SRC); return s ? s.serialize().data.geometry.coordinates.length : -1; }
 };
