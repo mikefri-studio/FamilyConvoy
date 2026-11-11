@@ -1,7 +1,7 @@
 // ============================================================
-// NAVIGATION v3 : guidage turn-by-turn (Valhalla FR + OSRM secours)
-// Carte blindée : mutations différées, jamais pendant le rendu,
-// setData uniquement au changement d'itinéraire, frames protégées.
+// NAVIGATION v4 : guidage turn-by-turn (Valhalla FR + OSRM secours)
+// Timeouts réseau + watchdog bandeau + reroute conscience GPS
+// Carte blindée : mutations différées, frames protégées.
 // ============================================================
 import { map, driverMap } from './map.js';
 import { S, me, getAll } from './state.js';
@@ -12,21 +12,33 @@ const VALHALLA  = 'https://valhalla1.openstreetmap.de/route';
 const OSRM      = 'https://router.project-osrm.org/route/v1/driving/';
 const NOMINATIM = 'https://nominatim.openstreetmap.org/search';
 const FAV_KEY   = 'fc_nav_favs';
+const TIMEOUT   = 9000;
 
 const SRC='nav-route', CASING='nav-route-casing', LINE='nav-route-line';
 const SRC_D='nav-route-d', CASING_D='nav-route-casing-d', LINE_D='nav-route-line-d';
 
 let nav = null;
 let searchTimer = null;
+let watchdog = null;
 const hooked = new WeakSet();
 const pending = new WeakSet();
 
-// ---------- Garde-fous carte ----------
+// ---------- Garde-fous ----------
 const safe = fn => { try { fn(); } catch(e){ console.warn('[Nav]', e.message); } };
 const defer = fn => setTimeout(fn, 0);
 const ready = m => !!(m && m.isStyleLoaded && m.isStyleLoaded());
 const visible = m => !!(m && m.getContainer() && m.getContainer().offsetParent !== null);
 const finiteCoords = c => (c || []).filter(p => Array.isArray(p) && isFinite(p[0]) && isFinite(p[1]));
+
+async function fetchWithTimeout(url, opts = {}, ms = TIMEOUT){
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms);
+  try {
+    const r = await fetch(url, { ...opts, signal: ctrl.signal });
+    if (!r.ok) throw new Error('http ' + r.status);
+    return r;
+  } finally { clearTimeout(t); }
+}
 
 // ---------- Utilitaires géo ----------
 function decodePolyline(str, precision = 6){
@@ -68,7 +80,7 @@ function iconFor(t){
 
 // ---------- Itinéraires ----------
 async function routeValhalla(from, to){
-  const r = await fetch(VALHALLA, {
+  const r = await fetchWithTimeout(VALHALLA, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -77,7 +89,6 @@ async function routeValhalla(from, to){
       directions_options: { language: 'fr-FR', units: 'kilometers' }
     })
   });
-  if (!r.ok) throw new Error('valhalla ' + r.status);
   const j = await r.json();
   const leg = j.trip && j.trip.legs && j.trip.legs[0];
   if (!leg) throw new Error('no leg');
@@ -127,8 +138,7 @@ function osrmText(st){
   return name ? base + ' sur ' + name : base;
 }
 async function routeOSRM(from, to){
-  const r = await fetch(`${OSRM}${from.lng},${from.lat};${to.lng},${to.lat}?steps=true&geometries=geojson&overview=full`);
-  if (!r.ok) throw new Error('osrm ' + r.status);
+  const r = await fetchWithTimeout(`${OSRM}${from.lng},${from.lat};${to.lng},${to.lat}?steps=true&geometries=geojson&overview=full`);
   const j = await r.json();
   const rt = j.routes && j.routes[0];
   if (!rt) throw new Error('no route');
@@ -143,7 +153,7 @@ async function routeOSRM(from, to){
   return { coords, maneuvers, summary: { km: rt.distance / 1000, min: rt.duration / 60 } };
 }
 
-// ---------- Couche tracé : création différée, jamais pendant le rendu ----------
+// ---------- Couche tracé (différée, protégée) ----------
 function hook(m){
   if (!m || hooked.has(m)) return;
   hooked.add(m);
@@ -222,15 +232,30 @@ function ensureDestMarkers(){
 
 // ---------- Bandeau ----------
 function setBanner(icon, instr, dist, eta){
-  $('#nav-icon').textContent = icon;
-  $('#nav-instr').textContent = instr;
-  $('#nav-dist').textContent = dist;
-  $('#nav-eta').textContent = eta;
+  safe(() => {
+    $('#nav-icon').textContent = icon;
+    $('#nav-instr').textContent = instr;
+    $('#nav-dist').textContent = dist;
+    $('#nav-eta').textContent = eta;
+  });
 }
 function etaText(remainKm){
   if (!nav || !nav.summary || !nav.summary.km || !nav.summary.min) return '';
   const speed = nav.summary.km / nav.summary.min;
   return `${remainKm.toFixed(1)} km · ${Math.max(1, Math.round(remainKm / speed))} min`;
+}
+function updateBanner(){
+  if (!nav) return;
+  if (!nav.coords.length){
+    setBanner('⏳', nav.computing ? 'Calcul de l’itinéraire…' : 'En attente du GPS…', '', '');
+    return;
+  }
+  const remainKm = Math.max(0, nav.total - (nav.cum[nav.idx] || 0));
+  const nm = nextManeuver();
+  if (nm){
+    const dToMan = Math.max(0, (nav.cum[nm.begin] || 0) - (nav.cum[nav.idx] || 0)) * 1000;
+    setBanner(iconFor(nm.type), nm.text || 'Continuez', 'dans ' + fmtDist(dToMan), etaText(remainKm));
+  } else setBanner('⬆', 'Continuez', '', etaText(remainKm));
 }
 
 // ---------- Cœur ----------
@@ -241,22 +266,34 @@ function memberPos(){
 async function computeRoute(){
   if (!nav || nav.computing) return;
   nav.computing = true;
-  const to = nav.memberId ? memberPos() : nav.dest;
-  if (!to || to.lat == null || to.lng == null){ pushAlert('📵 Destination indisponible', 'warn'); stopNavigation(); return; }
-  nav.dest.lat = to.lat; nav.dest.lng = to.lng;
-  let r = null;
-  try { r = await routeValhalla({ lat: me.lat, lng: me.lng }, to); }
-  catch(e){ try { r = await routeOSRM({ lat: me.lat, lng: me.lng }, to); } catch(e2){ r = null; } }
-  nav.computing = false;
-  if (!nav) return;
-  if (!r || !r.coords || r.coords.length < 2){ pushAlert('❌ Itinéraire introuvable', 'warn'); stopNavigation(); return; }
-  nav.coords = r.coords; nav.cum = buildCum(r.coords);
-  nav.total = nav.cum[nav.cum.length - 1];
-  nav.maneuvers = r.maneuvers; nav.summary = r.summary;
-  nav.idx = 0; nav.announced = new Set();
-  defer(() => { refreshRoute(); ensureDestMarkers(); overview(); });
   updateBanner();
-  console.log('[Nav] itinéraire :', nav.coords.length, 'points,', nav.total.toFixed(2), 'km');
+  try {
+    const to = nav.memberId ? memberPos() : nav.dest;
+    if (!to || to.lat == null || to.lng == null) throw new Error('destination indisponible');
+    nav.dest.lat = to.lat; nav.dest.lng = to.lng;
+    let r = null;
+    try { r = await routeValhalla({ lat: me.lat, lng: me.lng }, to); }
+    catch(e){
+      console.warn('[Nav] Valhalla indisponible, secours OSRM :', e.message);
+      r = await routeOSRM({ lat: me.lat, lng: me.lng }, to);
+    }
+    if (!nav) return;
+    if (!r || !r.coords || r.coords.length < 2) throw new Error('itinéraire introuvable');
+    nav.coords = r.coords; nav.cum = buildCum(r.coords);
+    nav.total = nav.cum[nav.cum.length - 1];
+    nav.maneuvers = r.maneuvers || []; nav.summary = r.summary;
+    nav.idx = 0; nav.announced = new Set(); nav.offCount = 0;
+    defer(() => { refreshRoute(); ensureDestMarkers(); overview(); });
+    console.log('[Nav] itinéraire :', nav.coords.length, 'points,', nav.total.toFixed(2), 'km');
+  } catch(e){
+    console.warn('[Nav] calcul impossible :', e.message);
+    pushAlert('❌ Itinéraire impossible : ' + e.message, 'warn', 5000);
+    stopNavigation(true);
+    return;
+  } finally {
+    if (nav) nav.computing = false;
+    updateBanner();
+  }
 }
 function nearestIndex(){
   const c = nav.coords;
@@ -270,6 +307,7 @@ function nearestIndex(){
   return best;
 }
 function nextManeuver(){
+  if (!nav || !nav.maneuvers || !nav.maneuvers.length) return null;
   return nav.maneuvers.find(m => m.begin >= nav.idx && m.type !== 1)
       || nav.maneuvers[nav.maneuvers.length - 1];
 }
@@ -287,15 +325,6 @@ function announce(nm, dToMan){
     speak(nm.text);
   }
 }
-function updateBanner(){
-  if (!nav || !nav.cum.length) return;
-  const remainKm = Math.max(0, nav.total - nav.cum[nav.idx]);
-  const nm = nextManeuver();
-  if (nm){
-    const dToMan = Math.max(0, nav.cum[nm.begin] - nav.cum[nav.idx]) * 1000;
-    setBanner(iconFor(nm.type), nm.text, 'dans ' + fmtDist(dToMan), etaText(remainKm));
-  } else setBanner('⬆', 'Continuez', '', etaText(remainKm));
-}
 function arrive(){
   speak('Vous êtes arrivé à destination');
   pushAlert('🏁 Arrivé à destination', 'success', 5000);
@@ -305,8 +334,8 @@ function arrive(){
 export function navigationTick(){
   try {
     if (!nav || me.lat == null || me.lng == null || !map) return;
-    // Réparation légère : seulement si la source a disparu, et différée
     if (ready(map) && !map.getSource(SRC)) defer(refreshRoute);
+    if (nav.computing) return;
 
     if (nav.memberId){
       const mp = memberPos();
@@ -321,14 +350,19 @@ export function navigationTick(){
     nav.idx = nearestIndex();
     const dDest = haversineKm(me.lat, me.lng, nav.dest.lat, nav.dest.lng);
     if (dDest < 0.04){ arrive(); return; }
+
+    // Recalcul intelligent : seuil lié à la précision GPS + 3 mesures consécutives
     const off = haversineKm(me.lat, me.lng, nav.coords[nav.idx][1], nav.coords[nav.idx][0]);
-    if (off > 0.06 && Date.now() - nav.lastReroute > 20000){
-      nav.lastReroute = Date.now();
+    const threshold = Math.max(0.08, (me.accuracy || 30) / 1000 + 0.05);
+    if (off > threshold) nav.offCount = (nav.offCount || 0) + 1; else nav.offCount = 0;
+    if (nav.offCount >= 3 && Date.now() - nav.lastReroute > 20000){
+      nav.lastReroute = Date.now(); nav.offCount = 0;
       pushAlert('🔁 Recalcul de l’itinéraire', 'info', 2500);
-      computeRoute(); return;
+      computeRoute();
     }
+
     const nm = nextManeuver();
-    if (nm) announce(nm, Math.max(0, nav.cum[nm.begin] - nav.cum[nav.idx]) * 1000);
+    if (nm) announce(nm, Math.max(0, (nav.cum[nm.begin] || 0) - (nav.cum[nav.idx] || 0)) * 1000);
     updateBanner();
 
     if (Date.now() < (nav.overviewUntil || 0)) return;
@@ -344,7 +378,7 @@ export async function startNavigation(dest){
   stopNavigation(true);
   nav = { dest:{ ...dest }, memberId: dest.memberId || null, coords:[], cum:[], total:0,
           maneuvers:[], idx:0, announced:new Set(), lastReroute:0, lastMemberRefresh:0,
-          computing:false, destMarker:null, destMarkerD:null, summary:null, overviewUntil:0 };
+          computing:false, offCount:0, destMarker:null, destMarkerD:null, summary:null, overviewUntil:0 };
   S.followId = null; S.followMe = false;
   $('#btn-nav').classList.add('active');
   $('#nav-banner').classList.remove('hidden');
@@ -360,12 +394,24 @@ export function stopNavigation(silent){
   }
   nav = null;
   clearRoute();
-  $('#nav-banner').classList.add('hidden');
-  $('#btn-nav').classList.remove('active');
+  safe(() => {
+    $('#nav-banner').classList.add('hidden');
+    $('#btn-nav').classList.remove('active');
+  });
   S.followMe = true;
   if (!silent) pushAlert('🧭 Navigation arrêtée', 'info', 2000);
 }
 export function isNavigating(){ return !!nav; }
+
+// ---------- Watchdog : bandeau toujours à jour ----------
+function startWatchdog(){
+  if (watchdog) return;
+  watchdog = setInterval(() => {
+    if (!nav) return;
+    updateBanner();
+    if (!nav.computing && !nav.coords.length) computeRoute();
+  }, 2000);
+}
 
 // ---------- Favoris ----------
 const getFavs = () => { try { return JSON.parse(localStorage.getItem(FAV_KEY) || '[]'); } catch(e){ return []; } };
@@ -391,12 +437,12 @@ async function search(q){
   if (q.length < 3){ box.innerHTML = ''; return; }
   box.innerHTML = '<div class="nav-empty">Recherche…</div>';
   try {
-    const r = await fetch(`${NOMINATIM}?format=json&q=${encodeURIComponent(q)}&limit=5&accept-language=fr`);
+    const r = await fetchWithTimeout(`${NOMINATIM}?format=json&q=${encodeURIComponent(q)}&limit=5&accept-language=fr`, {}, 7000);
     const j = await r.json();
     box.innerHTML = j.length ? j.map(x =>
       `<div class="nav-item" data-lat="${x.lat}" data-lng="${x.lon}" data-name="${(x.display_name||'').replace(/"/g,'&quot;')}">📍 ${(x.display_name||'').slice(0,60)}</div>`).join('')
       : '<div class="nav-empty">Aucun résultat</div>';
-  } catch(e){ box.innerHTML = '<div class="nav-empty">Erreur de recherche</div>'; }
+  } catch(e){ box.innerHTML = '<div class="nav-empty">Recherche indisponible (réseau)</div>'; }
 }
 export function openNavOverlay(){
   renderMembers(); renderFavs();
@@ -406,6 +452,7 @@ export function openNavOverlay(){
 
 // ---------- Bindings ----------
 export function bindNavigationUI(){
+  startWatchdog();
   $('#btn-nav').onclick = () => { if (nav) stopNavigation(); else openNavOverlay(); };
   $('#btn-close-nav').onclick = () => $('#nav-overlay').classList.add('hidden');
   $('#nav-search').addEventListener('input', e => {
@@ -449,9 +496,12 @@ export function bindNavigationUI(){
 // ---------- 🔍 Debug console (F12) ----------
 window.FC_NAV = {
   active:    () => !!nav,
+  computing: () => !!(nav && nav.computing),
   points:    () => nav ? nav.coords.length : 0,
+  maneuvers: () => nav ? nav.maneuvers.length : 0,
   hasSource: () => !!(map && map.getSource(SRC)),
   hasLayer:  () => !!(map && map.getLayer(LINE)),
   drawn:     () => { const s = map && map.getSource(SRC); return s ? s.serialize().data.geometry.coordinates.length : -1; },
-  redraw:    () => defer(refreshRoute)
+  redraw:    () => defer(refreshRoute),
+  retry:     () => { if (nav){ nav.computing = false; computeRoute(); } }
 };
