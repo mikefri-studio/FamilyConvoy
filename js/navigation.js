@@ -1,7 +1,7 @@
 // ============================================================
-// NAVIGATION v2 : guidage turn-by-turn (Valhalla FR + OSRM secours)
-// + tracé bleu AUTO-RÉPARANT sur les 2 cartes + aperçu itinéraire
-// + recherche Nominatim + membre/carte/favori + voix + Waze/Maps
+// NAVIGATION v3 : guidage turn-by-turn (Valhalla FR + OSRM secours)
+// Carte blindée : mutations différées, jamais pendant le rendu,
+// setData uniquement au changement d'itinéraire, frames protégées.
 // ============================================================
 import { map, driverMap } from './map.js';
 import { S, me, getAll } from './state.js';
@@ -19,6 +19,14 @@ const SRC_D='nav-route-d', CASING_D='nav-route-casing-d', LINE_D='nav-route-line
 let nav = null;
 let searchTimer = null;
 const hooked = new WeakSet();
+const pending = new WeakSet();
+
+// ---------- Garde-fous carte ----------
+const safe = fn => { try { fn(); } catch(e){ console.warn('[Nav]', e.message); } };
+const defer = fn => setTimeout(fn, 0);
+const ready = m => !!(m && m.isStyleLoaded && m.isStyleLoaded());
+const visible = m => !!(m && m.getContainer() && m.getContainer().offsetParent !== null);
+const finiteCoords = c => (c || []).filter(p => Array.isArray(p) && isFinite(p[0]) && isFinite(p[1]));
 
 // ---------- Utilitaires géo ----------
 function decodePolyline(str, precision = 6){
@@ -33,7 +41,7 @@ function decodePolyline(str, precision = 6){
     lng += ((result & 1) ? ~(result >> 1) : (result >> 1));
     coords.push([lng / factor, lat / factor]);
   }
-  return coords;
+  return finiteCoords(coords);
 }
 function buildCum(coords){
   const cum = [0];
@@ -124,7 +132,7 @@ async function routeOSRM(from, to){
   const j = await r.json();
   const rt = j.routes && j.routes[0];
   if (!rt) throw new Error('no route');
-  const coords = rt.geometry.coordinates;
+  const coords = finiteCoords(rt.geometry.coordinates);
   let idx = 0; const maneuvers = [];
   for (const leg of rt.legs || []) for (const st of leg.steps || []) {
     const n = (st.geometry && st.geometry.coordinates) ? st.geometry.coordinates.length : 1;
@@ -135,16 +143,22 @@ async function routeOSRM(from, to){
   return { coords, maneuvers, summary: { km: rt.distance / 1000, min: rt.duration / 60 } };
 }
 
-// ---------- Couche tracé : AUTO-RÉPARATION sur les 2 cartes ----------
-function ensureOn(m, src, casing, line){
-  if (!m) return;
-  if (!hooked.has(m)){
-    hooked.add(m);
-    const re = () => { if (nav){ ensureOn(m, src, casing, line); paint(m, src); } };
-    m.on('style.load', re);
-    m.on('load', re);
+// ---------- Couche tracé : création différée, jamais pendant le rendu ----------
+function hook(m){
+  if (!m || hooked.has(m)) return;
+  hooked.add(m);
+  m.on('style.load', () => { if (nav) defer(refreshRoute); });
+}
+function createOn(m, src, casing, line){
+  if (!ready(m)) {
+    if (!pending.has(m)){
+      pending.add(m);
+      m.once('style.load', () => { pending.delete(m); defer(refreshRoute); });
+    }
+    return;
   }
-  try {
+  hook(m);
+  safe(() => {
     if (!m.getSource(src))
       m.addSource(src, { type:'geojson', data:{ type:'Feature', geometry:{ type:'LineString', coordinates:[] } } });
     if (!m.getLayer(casing))
@@ -155,36 +169,35 @@ function ensureOn(m, src, casing, line){
       m.addLayer({ id:line, type:'line', source:src,
         layout:{ 'line-cap':'round', 'line-join':'round' },
         paint:{ 'line-color':'#42a5f5', 'line-width':5, 'line-opacity':0.95 } });
-  } catch(e){ console.warn('[Nav] couche :', e.message); }
+  });
 }
-function paint(m, src){
-  if (!m || !nav || !nav.coords || nav.coords.length < 2) return;
+function setOn(m, src){
+  if (!m || !nav) return;
   const s = m.getSource(src);
-  if (s) s.setData({ type:'Feature', geometry:{ type:'LineString', coordinates: nav.coords } });
+  if (s) safe(() => s.setData({ type:'Feature', geometry:{ type:'LineString', coordinates: nav.coords } }));
 }
-function ensureLayer(){
-  ensureOn(map, SRC, CASING, LINE);
-  ensureOn(driverMap, SRC_D, CASING_D, LINE_D);
-}
-function drawRoute(){
-  paint(map, SRC);
-  paint(driverMap, SRC_D);
-  if (map) map.triggerRepaint();
-  if (driverMap) driverMap.triggerRepaint();
+function refreshRoute(){
+  if (!nav) return;
+  createOn(map, SRC, CASING, LINE);
+  setOn(map, SRC);
+  if (visible(driverMap)){
+    createOn(driverMap, SRC_D, CASING_D, LINE_D);
+    setOn(driverMap, SRC_D);
+  }
 }
 function clearRoute(){
   for (const [m, src] of [[map, SRC], [driverMap, SRC_D]]){
     if (m && m.getSource(src))
-      m.getSource(src).setData({ type:'Feature', geometry:{ type:'LineString', coordinates:[] } });
+      safe(() => m.getSource(src).setData({ type:'Feature', geometry:{ type:'LineString', coordinates:[] } }));
   }
 }
 function overview(){
   if (!nav || nav.coords.length < 2) return;
   const b = new maplibregl.LngLatBounds();
-  nav.coords.forEach(p => b.extend(p));
-  if (map) map.fitBounds(b, { padding:70, maxZoom:15, duration:800 });
-  if (driverMap) driverMap.fitBounds(b, { padding:70, maxZoom:15, duration:800 });
-  nav.overviewUntil = Date.now() + 6000; // 6 s pour voir tout le tracé
+  nav.coords.forEach(p => safe(() => b.extend(p)));
+  safe(() => { if (ready(map)) map.fitBounds(b, { padding:70, maxZoom:15, duration:800 }); });
+  safe(() => { if (visible(driverMap) && ready(driverMap)) driverMap.fitBounds(b, { padding:70, maxZoom:15, duration:800 }); });
+  nav.overviewUntil = Date.now() + 6000;
 }
 
 // ---------- Drapeau destination ----------
@@ -195,10 +208,16 @@ function flagEl(){
 }
 function ensureDestMarkers(){
   if (!nav) return;
-  if (map && !nav.destMarker) nav.destMarker = new maplibregl.Marker({ element: flagEl() }).addTo(map);
-  if (driverMap && !nav.destMarkerD) nav.destMarkerD = new maplibregl.Marker({ element: flagEl() }).addTo(driverMap);
-  if (nav.destMarker) nav.destMarker.setLngLat([nav.dest.lng, nav.dest.lat]);
-  if (nav.destMarkerD) nav.destMarkerD.setLngLat([nav.dest.lng, nav.dest.lat]);
+  safe(() => {
+    if (map && !nav.destMarker) nav.destMarker = new maplibregl.Marker({ element: flagEl() }).addTo(map);
+    if (nav.destMarker) nav.destMarker.setLngLat([nav.dest.lng, nav.dest.lat]);
+  });
+  safe(() => {
+    if (visible(driverMap)){
+      if (!nav.destMarkerD) nav.destMarkerD = new maplibregl.Marker({ element: flagEl() }).addTo(driverMap);
+      if (nav.destMarkerD) nav.destMarkerD.setLngLat([nav.dest.lng, nav.dest.lat]);
+    }
+  });
 }
 
 // ---------- Bandeau ----------
@@ -217,13 +236,13 @@ function etaText(remainKm){
 // ---------- Cœur ----------
 function memberPos(){
   const v = getAll()[nav.memberId];
-  return (v && v.lat != null) ? { lat: v.lat, lng: v.lng, name: v.name } : null;
+  return (v && v.lat != null && v.lng != null) ? { lat: v.lat, lng: v.lng, name: v.name } : null;
 }
 async function computeRoute(){
   if (!nav || nav.computing) return;
   nav.computing = true;
   const to = nav.memberId ? memberPos() : nav.dest;
-  if (!to){ pushAlert('📵 Destination indisponible', 'warn'); stopNavigation(); return; }
+  if (!to || to.lat == null || to.lng == null){ pushAlert('📵 Destination indisponible', 'warn'); stopNavigation(); return; }
   nav.dest.lat = to.lat; nav.dest.lng = to.lng;
   let r = null;
   try { r = await routeValhalla({ lat: me.lat, lng: me.lng }, to); }
@@ -235,11 +254,13 @@ async function computeRoute(){
   nav.total = nav.cum[nav.cum.length - 1];
   nav.maneuvers = r.maneuvers; nav.summary = r.summary;
   nav.idx = 0; nav.announced = new Set();
-  ensureLayer(); drawRoute(); ensureDestMarkers(); overview(); updateBanner();
+  defer(() => { refreshRoute(); ensureDestMarkers(); overview(); });
+  updateBanner();
   console.log('[Nav] itinéraire :', nav.coords.length, 'points,', nav.total.toFixed(2), 'km');
 }
 function nearestIndex(){
   const c = nav.coords;
+  if (!c.length) return 0;
   const start = Math.max(0, nav.idx - 3), end = Math.min(c.length - 1, nav.idx + 60);
   let best = nav.idx, bd = Infinity;
   for (let i = start; i <= end; i++){
@@ -267,6 +288,7 @@ function announce(nm, dToMan){
   }
 }
 function updateBanner(){
+  if (!nav || !nav.cum.length) return;
   const remainKm = Math.max(0, nav.total - nav.cum[nav.idx]);
   const nm = nextManeuver();
   if (nm){
@@ -281,41 +303,44 @@ function arrive(){
 }
 
 export function navigationTick(){
-  if (!nav || me.lat == null || !map) return;
-  // 🛡️ AUTO-RÉPARATION : couche + tracé vérifiés à chaque tick
-  ensureLayer(); drawRoute(); ensureDestMarkers();
+  try {
+    if (!nav || me.lat == null || me.lng == null || !map) return;
+    // Réparation légère : seulement si la source a disparu, et différée
+    if (ready(map) && !map.getSource(SRC)) defer(refreshRoute);
 
-  if (nav.memberId){
-    const mp = memberPos();
-    if (!mp){ pushAlert('📵 Membre perdu, navigation arrêtée', 'warn'); stopNavigation(); return; }
-    if (haversineKm(mp.lat, mp.lng, nav.dest.lat, nav.dest.lng) > 0.2 && Date.now() - nav.lastMemberRefresh > 30000){
-      nav.lastMemberRefresh = Date.now();
-      nav.dest.lat = mp.lat; nav.dest.lng = mp.lng;
-      computeRoute();
+    if (nav.memberId){
+      const mp = memberPos();
+      if (!mp){ pushAlert('📵 Membre perdu, navigation arrêtée', 'warn'); stopNavigation(); return; }
+      if (haversineKm(mp.lat, mp.lng, nav.dest.lat, nav.dest.lng) > 0.2 && Date.now() - nav.lastMemberRefresh > 30000){
+        nav.lastMemberRefresh = Date.now();
+        nav.dest.lat = mp.lat; nav.dest.lng = mp.lng;
+        computeRoute();
+      }
     }
-  }
-  nav.idx = nearestIndex();
-  const dDest = haversineKm(me.lat, me.lng, nav.dest.lat, nav.dest.lng);
-  if (dDest < 0.04){ arrive(); return; }
-  const off = haversineKm(me.lat, me.lng, nav.coords[nav.idx][1], nav.coords[nav.idx][0]);
-  if (off > 0.06 && Date.now() - nav.lastReroute > 20000){
-    nav.lastReroute = Date.now();
-    pushAlert('🔁 Recalcul de l’itinéraire', 'info', 2500);
-    computeRoute(); return;
-  }
-  const nm = nextManeuver();
-  if (nm) announce(nm, Math.max(0, nav.cum[nm.begin] - nav.cum[nav.idx]) * 1000);
-  updateBanner();
+    if (!nav.coords.length) return;
+    nav.idx = nearestIndex();
+    const dDest = haversineKm(me.lat, me.lng, nav.dest.lat, nav.dest.lng);
+    if (dDest < 0.04){ arrive(); return; }
+    const off = haversineKm(me.lat, me.lng, nav.coords[nav.idx][1], nav.coords[nav.idx][0]);
+    if (off > 0.06 && Date.now() - nav.lastReroute > 20000){
+      nav.lastReroute = Date.now();
+      pushAlert('🔁 Recalcul de l’itinéraire', 'info', 2500);
+      computeRoute(); return;
+    }
+    const nm = nextManeuver();
+    if (nm) announce(nm, Math.max(0, nav.cum[nm.begin] - nav.cum[nav.idx]) * 1000);
+    updateBanner();
 
-  // Caméra : seulement après l'aperçu de 6 s
-  if (Date.now() < (nav.overviewUntil || 0)) return;
-  const bearing = S.myHeading != null ? S.myHeading : 0;
-  if (S.driverMode && driverMap) driverMap.easeTo({ center:[me.lng, me.lat], zoom:16, bearing, pitch:50, duration:900 });
-  else map.easeTo({ center:[me.lng, me.lat], zoom:16, bearing, pitch:45, duration:900 });
+    if (Date.now() < (nav.overviewUntil || 0)) return;
+    const bearing = S.myHeading != null ? S.myHeading : 0;
+    const cam = { center:[me.lng, me.lat], zoom:16, bearing, pitch:45, duration:900 };
+    if (S.driverMode && visible(driverMap) && ready(driverMap)) safe(() => driverMap.easeTo({ ...cam, pitch:50 }));
+    else if (ready(map)) safe(() => map.easeTo(cam));
+  } catch(e){ console.warn('[Nav] tick :', e.message); }
 }
 
 export async function startNavigation(dest){
-  if (me.lat == null){ pushAlert('⚠️ GPS requis pour naviguer', 'warn'); return; }
+  if (me.lat == null || me.lng == null){ pushAlert('⚠️ GPS requis pour naviguer', 'warn'); return; }
   stopNavigation(true);
   nav = { dest:{ ...dest }, memberId: dest.memberId || null, coords:[], cum:[], total:0,
           maneuvers:[], idx:0, announced:new Set(), lastReroute:0, lastMemberRefresh:0,
@@ -330,8 +355,8 @@ export async function startNavigation(dest){
 }
 export function stopNavigation(silent){
   if (nav){
-    if (nav.destMarker) nav.destMarker.remove();
-    if (nav.destMarkerD) nav.destMarkerD.remove();
+    safe(() => { if (nav.destMarker) nav.destMarker.remove(); });
+    safe(() => { if (nav.destMarkerD) nav.destMarkerD.remove(); });
   }
   nav = null;
   clearRoute();
@@ -428,5 +453,5 @@ window.FC_NAV = {
   hasSource: () => !!(map && map.getSource(SRC)),
   hasLayer:  () => !!(map && map.getLayer(LINE)),
   drawn:     () => { const s = map && map.getSource(SRC); return s ? s.serialize().data.geometry.coordinates.length : -1; },
-  redraw:    () => { ensureLayer(); drawRoute(); }
+  redraw:    () => defer(refreshRoute)
 };
