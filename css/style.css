@@ -30,6 +30,26 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;o
 .alert.success{border-color:#66bb6a}
 @keyframes drop{from{opacity:0;transform:translateY(-14px)}to{opacity:1;transform:none}}
 
+/* ===== Bandeau de guidage navigation ===== */
+.nav-banner{position:absolute;top:12px;left:50%;transform:translateX(-50%);z-index:30;width:min(94%,420px);border-radius:20px;padding:12px 14px;color:var(--text)}
+.nav-main{display:flex;align-items:center;gap:12px}
+.nav-icon{font-size:34px;line-height:1;flex:none;width:44px;text-align:center}
+.nav-txt{flex:1;min-width:0}
+.nav-instr{font-size:15px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nav-sub{display:flex;gap:10px;font-size:12px;color:var(--muted);font-weight:700;margin-top:2px}
+.nav-stop{flex:none;border:none;background:rgba(198,40,40,.9);color:#fff;width:34px;height:34px;border-radius:50%;font-size:15px;font-weight:800;cursor:pointer}
+.nav-actions{display:flex;gap:8px;margin-top:10px}
+.nav-actions button{flex:1;border:none;border-radius:12px;padding:8px 0;font-size:12px;font-weight:800;cursor:pointer;background:rgba(127,127,127,.16);color:var(--text)}
+.nav-actions button:active{transform:scale(.96)}
+body.driver .nav-banner{top:10px}
+
+/* Listes destination / favoris */
+.nav-list{max-height:22vh;overflow-y:auto;margin-top:6px}
+.nav-item{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 12px;border-radius:12px;background:rgba(127,127,127,.12);margin-bottom:6px;font-size:13px;font-weight:600;cursor:pointer}
+.nav-item:active{transform:scale(.98)}
+.nav-del{cursor:pointer;opacity:.7}
+.nav-empty{font-size:12px;color:var(--muted);padding:6px 2px}
+
 /* Liste véhicules */
 .panel{position:absolute;bottom:100px;left:50%;transform:translateX(-50%);width:min(94%,400px);z-index:10;border-radius:22px;overflow:hidden;color:var(--text);animation:fade .4s}
 .panel-head{display:flex;justify-content:space-between;align-items:center;padding:13px 18px;cursor:pointer;font-weight:800;font-size:14px;user-select:none}
@@ -63,7 +83,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;o
 .rt .tm{font-size:10px;color:var(--muted);margin-top:1px}
 
 /* Dock */
-.dock{position:absolute;bottom:14px;left:50%;transform:translateX(-50%);z-index:12;display:flex;align-items:center;gap:2px;padding:8px 10px;border-radius:26px;animation:fade .4s}
+.dock{position:absolute;bottom:14px;left:50%;transform:translateX(-50%);z-index:12;display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:2px;padding:8px 10px;border-radius:26px;max-width:96vw;animation:fade .4s}
 .dock-btn{display:flex;flex-direction:column;align-items:center;gap:3px;border:none;background:transparent;color:var(--text);cursor:pointer;padding:7px 7px;border-radius:16px;transition:transform .12s,background .2s;min-width:50px}
 .dock-btn:active{transform:scale(.9)}
 .dock-btn .ico{font-size:21px;line-height:1}
@@ -184,9 +204,7 @@ body.night .maplibregl-canvas{filter:invert(1) hue-rotate(180deg) brightness(.9)
   margin-top:4px;cursor:pointer;
 }
 .setting-select:focus{outline:none;border-color:var(--accent)}
-.radar-types{
-  display:flex;flex-wrap:wrap;gap:10px;margin-top:6px;
-}
+.radar-types{display:flex;flex-wrap:wrap;gap:10px;margin-top:6px}
 .checkbox-label{
   display:flex;align-items:center;gap:6px;
   padding:8px 14px;border-radius:12px;
@@ -198,21 +216,3 @@ body.night .maplibregl-canvas{filter:invert(1) hue-rotate(180deg) brightness(.9)
 
 /* ===== Signalement ===== */
 #report-overlay .card{max-width:400px}
-
-/* Réglages Radars */
-.setting-select{
-  width:100%;padding:11px 13px;border:2px solid transparent;
-  border-radius:12px;background:rgba(127,127,127,.13);
-  font-size:14px;font-weight:600;color:var(--text);
-  margin-top:4px;cursor:pointer;
-}
-.setting-select:focus{outline:none;border-color:var(--accent)}
-.radar-types{display:flex;flex-wrap:wrap;gap:10px;margin-top:6px}
-.checkbox-label{
-  display:flex;align-items:center;gap:6px;
-  padding:8px 14px;border-radius:12px;
-  background:rgba(127,127,127,.13);
-  cursor:pointer;font-size:13px;font-weight:600;
-  user-select:none;
-}
-.checkbox-label input{accent-color:var(--accent);width:16px;height:16px}
