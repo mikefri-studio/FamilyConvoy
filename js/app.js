@@ -1,5 +1,5 @@
 // ============================================================
-// APP v4 : GPS, Firebase, voix, radars (CSV+RadarZen), signalements
+// APP v5 : GPS, Firebase, voix, radars, signalements, NAVIGATION
 // ============================================================
 import { MAP_STYLES, TESLA_WORKER_URL, ROUTING_WORKER_URL } from './config.js';
 import { $, haversineKm, bearingDeg, ago, freshDev, colorFor, bus } from './utils.js';
@@ -14,6 +14,7 @@ import { tripTick, endTrip, resumeTrip, pruneHistory, bindHistoryUI } from './tr
 import { bindRadio, playRadio } from './radio.js';
 import { loadRadars, updateRadarLayer, checkRadarAlert, toggleRadars, isRadarsEnabled, getSettings, saveSettings } from './radars.js';
 import { addReport } from './radarzen.js';
+import { bindNavigationUI, navigationTick, stopNavigation, isNavigating } from './navigation.js';
 import * as MAP from './map.js';
 
 // ============================================================
@@ -35,6 +36,7 @@ function startGPS(){
     me.speed = Math.round((p.coords.speed||0)*3.6);
     S.lastGPSUpdate = now;
     updateStatus();
+    navigationTick(); // ⬅️ guidage à chaque position GPS
   }, e => { $('#status').textContent = 'GPS refusé'; pushAlert('⚠️ Autorise la géolocalisation','warn'); },
   { enableHighAccuracy:true, maximumAge:2000, timeout:15000 });
 }
@@ -121,7 +123,7 @@ function startSharing(){
   }).catch(()=>{});
 
   loadEmblem(me.group);
-  loadRadars(); // ⬅️ Charge CSV + RadarZen
+  loadRadars();
   setTimeout(updateRoutes, 4000);
   updateRoleUI(); updateStatus();
   resumeTrip();
@@ -143,12 +145,14 @@ setInterval(() => {
   }
   checkRadarAlert();
   updateRadarLayer();
+  navigationTick(); // ⬅️ guidage aussi sur le tick 5s
 }, 5000);
 
 // ============================================================
 // 🚪 Quitter / rejoindre
 // ============================================================
 function leaveGroup(clearName=false){
+  stopNavigation(); // ⬅️ coupe la navigation en quittant
   endTrip();
   if (S.refs.deviceRef) { R.onDisconnect(S.refs.deviceRef).cancel(); R.set(S.refs.deviceRef, null); }
   if (S.refs.myRef) {
@@ -252,30 +256,26 @@ async function updateRoutes(){
   for (const [id, v] of Object.entries(all)) {
     if (id === me.id || v.lat == null) continue;
     
-    // Cache de 60 secondes pour éviter de spammer l'API
     const rc = S.routeCache[id];
     if (rc && Date.now() - rc.ts < 60000) continue;
     
-    // Appeler notre Worker Cloudflare (qui appelle OpenRouteService)
     const workerUrl = `${ROUTING_WORKER_URL}?start=${me.lng},${me.lat}&end=${v.lng},${v.lat}`;
     
     jobs.push(
       fetch(workerUrl)
         .then(r => r.json())
         .then(j => {
-          // Parser la réponse OpenRouteService
           if (j.features && j.features[0]) {
             const props = j.features[0].properties;
             S.routeCache[id] = {
-              km: props.summary.distance / 1000, // Convertir mètres → km
-              min: Math.round(props.summary.duration / 60), // Convertir secondes → minutes
+              km: props.summary.distance / 1000,
+              min: Math.round(props.summary.duration / 60),
               ts: Date.now()
             };
           }
         })
         .catch(e => {
           console.warn('[Routes] Erreur Worker :', e.message);
-          // Pas de pushAlert pour éviter de spammer l'utilisateur
         })
     );
   }
@@ -289,9 +289,11 @@ setInterval(updateRoutes, 30000);
 
 // ============================================================
 // 🗣️ Annonce vocale véhicule le plus proche
+// (désactivée pendant la navigation pour éviter le bavardage)
 // ============================================================
 setInterval(()=>{
   if (!S.joined || !S.voiceOn) return;
+  if (isNavigating()) return; // ⬅️ la nav parle déjà
   if (!(S.driverMode || me.speed > 20)) return;
   const all = getAll();
   const my = all[me.id];
@@ -567,11 +569,9 @@ $('#btn-report-send').onclick = async () => {
 $('#btn-close-report').onclick = () => $('#report-overlay').classList.add('hidden');
 
 // ============================================================
-// 📲 Service Worker PWA (NOUVEAU : fichier statique sw.js)
-// Remplace l'ancien système "Blob" qui bloquait les mises à jour
+// 📲 Service Worker PWA (fichier statique sw.js)
 // ============================================================
 if ('serviceWorker' in navigator) {
-  // 1️⃣ Tuer l'ancien service worker "blob:" qui bloque les MAJ
   navigator.serviceWorker.getRegistrations().then(registrations => {
     for (const registration of registrations) {
       if (registration.active && registration.active.scriptURL.startsWith('blob:')) {
@@ -581,17 +581,14 @@ if ('serviceWorker' in navigator) {
     }
   });
   
-  // 2️⃣ Enregistrer le vrai fichier sw.js (à la racine du repo)
   const swUrl = new URL('../sw.js', import.meta.url).href;
   navigator.serviceWorker.register(swUrl, { updateViaCache: 'none' })
     .then(registration => {
       console.log('[App] SW enregistré :', swUrl);
-      // Vérifier régulièrement s'il y a une nouvelle version (toutes les heures)
       setInterval(() => registration.update(), 60 * 60 * 1000);
     })
     .catch(err => console.error('[App] Erreur enregistrement SW:', err));
   
-  // 3️⃣ Recharger automatiquement la page quand un nouveau SW prend le contrôle
   let refreshing = false;
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     if (refreshing) return;
@@ -615,6 +612,7 @@ bindVoiceUI();
 bindAvatarUI();
 bindRadio();
 bindHistoryUI();
+bindNavigationUI(); // ⬅️ navigation
 
 $('#btn-radar').classList.toggle('active', isRadarsEnabled());
 
