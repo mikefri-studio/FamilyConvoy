@@ -12,7 +12,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;o
 #map{position:absolute;top:0;bottom:0;width:100%}
 .glass{background:var(--glass);backdrop-filter:blur(16px) saturate(1.5);-webkit-backdrop-filter:blur(16px) saturate(1.5);border:1px solid var(--glass-border);box-shadow:var(--shadow)}
 
-.header{position:absolute;top:12px;left:88px;z-index:10;display:flex;flex-direction:column;gap:8px;align-items:flex-start;animation:fade .4s}
+.header{position:absolute;top:12px;left:12px;z-index:10;display:flex;flex-direction:column;gap:8px;align-items:flex-start;animation:fade .4s}
 .pill{display:flex;align-items:center;gap:8px;padding:9px 15px;border-radius:20px;font-size:13px;font-weight:700;color:var(--text)}
 .pill .dot{width:8px;height:8px;border-radius:50%;background:#34a853;box-shadow:0 0 8px #34a853;animation:blink 2s infinite}
 .pill .xbtn{border:none;background:rgba(127,127,127,.2);color:var(--text);border-radius:10px;padding:3px 10px;margin-left:2px;cursor:pointer;font-size:11px;font-weight:800}
@@ -28,7 +28,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;o
 .alert.success{border-color:#66bb6a}
 @keyframes drop{from{opacity:0;transform:translateY(-14px)}to{opacity:1;transform:none}}
 
-/* ===== Bandeau navigation (Pack A) ===== */
+/* ===== Bandeau navigation ===== */
 .nav-banner{position:absolute;top:12px;left:50%;transform:translateX(-50%);z-index:30;width:min(94%,420px);border-radius:20px;padding:12px 14px;color:var(--text)}
 .nav-main{display:flex;align-items:center;gap:12px}
 .nav-icon{font-size:34px;line-height:1;flex:none;width:44px;text-align:center}
@@ -39,14 +39,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;o
 .nav-stop{flex:none;border:none;background:rgba(198,40,40,.9);color:#fff;width:34px;height:34px;border-radius:50%;font-size:15px;font-weight:800;cursor:pointer}
 .nav-progress{height:5px;background:rgba(127,127,127,.25);border-radius:3px;margin-top:10px;overflow:hidden}
 .nav-progress-fill{height:100%;width:0%;background:linear-gradient(90deg,#4285f4,#1a73e8);border-radius:3px;transition:width .6s}
-.nav-actions{display:flex;gap:8px;margin-top:10px}
-.nav-actions button{flex:1;border:none;border-radius:12px;padding:8px 0;font-size:12px;font-weight:800;cursor:pointer;background:rgba(127,127,127,.16);color:var(--text)}
-.nav-actions button:active{transform:scale(.96)}
-/* Pack A #4 : mode conduite gros chiffres */
-body.driver .nav-banner{top:10px}
-body.driver .nav-banner .nav-dist{font-size:32px;font-weight:900;color:var(--text);line-height:1}
-body.driver .nav-banner .nav-instr{font-size:18px}
-body.driver .nav-banner .nav-sub{font-size:13px}
+.nav-actions{display:none!important}
 
 /* Listes nav */
 .nav-list{max-height:22vh;overflow-y:auto;margin-top:6px}
@@ -55,7 +48,7 @@ body.driver .nav-banner .nav-sub{font-size:13px}
 .nav-del{cursor:pointer;opacity:.7}
 .nav-empty{font-size:12px;color:var(--muted);padding:6px 2px}
 
-/* Diagnostic (Pack C9) */
+/* Diagnostic */
 .diag-body{margin-top:8px}
 .diag-row{display:flex;justify-content:space-between;gap:10px;padding:8px 10px;border-radius:10px;background:rgba(127,127,127,.1);margin-bottom:6px;font-size:12.5px}
 .diag-row b{font-weight:700;text-align:right}
@@ -83,6 +76,7 @@ body.driver .nav-banner .nav-sub{font-size:13px}
 .rt .dst{font-weight:800;font-size:13.5px}
 .rt .tm{font-size:10px;color:var(--muted);margin-top:1px}
 
+/* ===== Dock ===== */
 .dock{position:absolute;bottom:14px;left:50%;transform:translateX(-50%);z-index:12;display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:2px;padding:8px 10px;border-radius:26px;max-width:96vw;animation:fade .4s}
 .dock-btn{display:flex;flex-direction:column;align-items:center;gap:3px;border:none;background:transparent;color:var(--text);cursor:pointer;padding:7px 7px;border-radius:16px;transition:transform .12s,background .2s;min-width:50px}
 .dock-btn:active{transform:scale(.9)}
@@ -93,10 +87,11 @@ body.driver .nav-banner .nav-sub{font-size:13px}
 .dock-btn.drive{background:linear-gradient(135deg,#ffb74d,#fb8c00);border-radius:16px;padding:7px 10px}
 .dock-btn.drive .lbl{color:#fff}
 
-#btn-radio{position:absolute;top:12px;left:12px;width:64px;height:64px;border-radius:50%;background:linear-gradient(145deg,#ff5252,#c62828);color:#fff;font-size:26px;border:4px solid var(--glass);box-shadow:0 8px 24px rgba(198,40,40,.5);z-index:25;cursor:pointer;touch-action:none;user-select:none;-webkit-user-select:none;transition:transform .15s}
-#btn-radio:active{transform:scale(.94)}
-#btn-radio.recording{animation:pulse 1s infinite;box-shadow:0 0 0 8px rgba(198,40,40,.3)}
-@keyframes pulse{0%{transform:scale(1)}50%{transform:scale(1.1)}100%{transform:scale(1)}}
+/* ===== Micro radio : maintenant dans le dock ===== */
+#btn-radio{position:static;width:auto;height:auto;border:none;background:transparent;box-shadow:none;color:var(--text);font-size:inherit;border-radius:16px;touch-action:none;user-select:none;-webkit-user-select:none}
+#btn-radio.recording{background:rgba(198,40,40,.28);animation:pulse 1s infinite}
+#btn-radio.recording .lbl{color:#e53935}
+@keyframes pulse{0%{transform:scale(1)}50%{transform:scale(1.08)}100%{transform:scale(1)}}
 
 .map-switcher{position:absolute;top:12px;right:12px;z-index:11;display:flex;gap:6px;padding:6px;border-radius:16px}
 .map-switcher .sw-btn{width:40px;height:40px;border-radius:11px;border:2px solid transparent;cursor:pointer;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.25);transition:all .2s;background:#1a1a1a;padding:0}
@@ -148,7 +143,6 @@ body.driver .map-switcher{display:none}
 .replay-foot button{margin-top:0}
 
 body.driver .header,body.driver .panel,body.driver .dock{display:none}
-body.driver #btn-radio{top:auto;bottom:24px;right:24px;left:auto}
 .driver-ui{position:fixed;inset:0;background:#0b0d10;color:#fff;z-index:20;display:none;flex-direction:column;padding:16px}
 body.driver .driver-ui{display:flex}
 .driver-map{flex:1;border-radius:20px;overflow:hidden;position:relative}
@@ -174,62 +168,37 @@ body.night .maplibregl-canvas{filter:invert(1) hue-rotate(180deg) brightness(.9)
 .checkbox-label input{accent-color:var(--accent);width:16px;height:16px}
 #report-overlay .card{max-width:400px}
 
-/* Masque définitivement les boutons Waze / Maps */
-.nav-actions{display:none!important}
 /* ============================================================
-   RESPONSIVE MOBILE (≤480px) : dock compact 1 ligne, switcher
-   vertical en bas à droite, bandeau nav à droite du micro,
-   panneau et alertes repositionnés hors des chevauchements
+   RESPONSIVE MOBILE (≤480px)
    ============================================================ */
 @media (max-width:480px){
-  /* Micro plus petit, coin haut-gauche */
-  #btn-radio{width:56px;height:56px;font-size:22px;top:10px;left:10px}
-
-  /* Pills d'état : colonne étroite à droite du micro */
-  .header{left:74px;top:10px;gap:6px}
+  .header{left:10px;top:10px;gap:6px}
   .pill{padding:7px 11px;font-size:11px}
-
-  /* Switcher de cartes : colonne verticale en bas à droite */
   .map-switcher{top:auto;bottom:86px;right:6px;flex-direction:column;padding:4px;gap:4px}
   .map-switcher .sw-btn{width:32px;height:32px}
-
-  /* Dock : UNE seule ligne compacte (plus de wrap qui mange l'écran) */
   .dock{bottom:10px;flex-wrap:nowrap;gap:0;padding:6px 6px;max-width:99vw;border-radius:22px}
   .dock-btn{min-width:38px;padding:6px 3px}
   .dock-btn .ico{font-size:18px}
   .dock-btn .lbl{font-size:7.5px;letter-spacing:.02em}
-
-  /* Panneau convoi : au-dessus du dock, jamais dessous */
   .panel{bottom:80px;width:min(96%,330px)}
   .panel-body{max-height:24vh}
-
-  /* Alertes : sous l'en-tête / sous le bandeau nav */
-  .alerts{top:112px;width:min(88%,330px)}
-
-  /* Bandeau navigation : à droite du micro, pleine largeur utile */
-  .nav-banner{left:74px;right:6px;top:10px;transform:none;width:auto;padding:10px 12px;z-index:30}
+  .alerts{top:96px;width:min(88%,330px)}
+  .nav-banner{left:10px;right:6px;top:10px;transform:none;width:auto;padding:10px 12px}
   .nav-icon{font-size:28px;width:36px}
   .nav-instr{font-size:13.5px}
   .nav-next{font-size:10.5px}
   .nav-sub{font-size:11px;gap:7px}
-
-  /* Overlays plus compacts */
   .card{padding:20px;border-radius:20px}
   .card h1{font-size:20px}
   .emoji-grid{grid-template-columns:repeat(6,1fr)}
-
-  /* Mode conduite adapté */
   .driver-ui{padding:10px}
   .driver-info .big{font-size:34px}
   .driver-info .sub{font-size:12px}
   .driver-grid .v{font-size:14px}
   .driver-grid .l{font-size:8.5px}
 }
-
-/* Très petits écrans (≤350px) : on garde l'essentiel */
 @media (max-width:350px){
   .dock-btn{min-width:34px}
   .dock-btn .lbl{display:none}
   .map-switcher .sw-btn{width:28px;height:28px}
-  .nav-actions{display:none!important}
 }
