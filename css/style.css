@@ -202,3 +202,18 @@ body.night .maplibregl-canvas{filter:invert(1) hue-rotate(180deg) brightness(.9)
   .dock-btn .lbl{display:none}
   .map-switcher .sw-btn{width:28px;height:28px}
 }
+
+/* ===== Sélecteur de carte repliable (logo 🗺️) ===== */
+.maps-check{display:none}
+.maps-wrap{position:absolute;top:12px;right:12px;z-index:11;display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+.maps-toggle{width:46px;height:46px;border-radius:14px;font-size:21px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--text);box-shadow:0 2px 10px rgba(0,0,0,.25)}
+.maps-toggle:active{transform:scale(.92)}
+.map-switcher{position:static;top:auto;right:auto;bottom:auto;left:auto;display:none;flex-direction:column;gap:6px;padding:6px;border-radius:16px;box-shadow:0 8px 24px rgba(0,0,0,.3)}
+.maps-check:checked ~ .map-switcher{display:flex}
+.maps-check:checked ~ .maps-toggle{outline:2px solid var(--accent)}
+body.driver .maps-wrap{display:none}
+@media (max-width:480px){
+  .maps-wrap{top:10px;right:8px}
+  .maps-toggle{width:40px;height:40px;font-size:18px}
+  .map-switcher .sw-btn{width:34px;height:34px}
+}
