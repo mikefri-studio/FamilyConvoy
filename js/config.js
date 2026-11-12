@@ -3,10 +3,6 @@
 // ============================================================
 export const MAPTILER_KEY = 'nJnYbbeBVl4T09PtkVVv';
 
-// URL de ton worker Cloudflare (proxy TTS Edge de secours)
-// Laisse '' si tu ne l'utilises pas — le moteur s'en passe très bien
-export const EDGE_TTS_URL = 'https://convoy-tts.mikefri-app.workers.dev';
-
 const ignRasterStyle = (layer, format, maxzoom) => ({
   version: 8,
   sources: {
@@ -39,23 +35,13 @@ export const FIREBASE_CONFIG = {
 };
 
 export const TESLA_WORKER_URL = "";
+export const ROUTING_WORKER_URL = 'https://family-convoy-routes.mikefri-app.workers.dev/';
 
-export const EMOJIS = ['🚗','','🚕','️','🚌','','️','','','⛄','','','❤️','😎','','','🐶','','🦊','','🐼','','',''];
-
+export const EMOJIS = ['🚗','','🚕','️','🚌','','️','','','⛄','','','❤️','😎','','','🐶','','','','🐼','','',''];
 export const PALETTE = ['#e53935','#8e24aa','#3949ab','#00897b','#f4511e','#6d4c41','#d81b60','#1e88e5'];
-
-
 
 // ============================================================
 // ELEVENLABS TTS (Qualité studio)
 // ============================================================
-// ⬇️ COLLE TA CLÉ API ICI (commence par sk_)
-export const ELEVENLABS_API_KEY = 'sk_a6fa1480643b469256cc6e253bc8eba0a7908fb5ad61287c'; 
-
-// Voix par défaut (Rachel = féminine naturelle, multilingue)
-export const ELEVENLABS_VOICE_ID = '21m00Tcm4TlvDq8ikWAM'; 
-
-// ============================================================
-// ROUTING : Worker Cloudflare pour OpenRouteService
-// ============================================================
-export const ROUTING_WORKER_URL = 'https://family-convoy-routes.mikefri-app.workers.dev/';
+export const ELEVENLABS_API_KEY = 'sk_a6fa1480643b469256cc6e253bc8eba0a7908fb5ad61287c';
+export const ELEVENLABS_VOICE_ID = '21m00Tcm4TlvDq8ikWAM';
