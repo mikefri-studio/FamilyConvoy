@@ -25,7 +25,7 @@
 
 <div class="alerts" id="alerts"></div>
 
-<!-- Bandeau de guidage (Pack A : next + progression + arrivée) -->
+<!-- Bandeau de guidage -->
 <div class="nav-banner glass hidden" id="nav-banner">
   <div class="nav-main">
     <div class="nav-icon" id="nav-icon">⬆</div>
@@ -51,6 +51,7 @@
   <div class="panel-body" id="list"><div class="row"><span>Chargement…</span></div></div>
 </div>
 
+<!-- Dock : NUIT retiré, MICRO intégré à la place -->
 <div class="dock glass">
   <button class="dock-btn" id="btn-share"><span class="ico">📤</span><span class="lbl">Inviter</span></button>
   <button class="dock-btn" id="btn-history"><span class="ico">📊</span><span class="lbl">Trajets</span></button>
@@ -59,11 +60,12 @@
   <button class="dock-btn" id="btn-nav"><span class="ico">🧭</span><span class="lbl">Nav</span></button>
   <button class="dock-btn" id="btn-radar"><span class="ico">📷</span><span class="lbl">Radars</span></button>
   <button class="dock-btn" id="btn-report"><span class="ico">📍</span><span class="lbl">Signaler</span></button>
-  <button class="dock-btn" id="btn-night"><span class="ico">🌙</span><span class="lbl">Nuit</span></button>
+  <button class="dock-btn" id="btn-radio" title="Maintiens pour parler"><span class="ico">🎙️</span><span class="lbl">Radio</span></button>
   <button class="dock-btn" id="btn-menu"><span class="ico">⚙️</span><span class="lbl">Menu</span></button>
 </div>
 
-<button id="btn-radio" title="Maintiens pour parler">🎙️</button>
+<!-- Bouton nuit conservé mais masqué (le mode nuit reste automatique) -->
+<button id="btn-night" class="hidden"><span class="ico">🌙</span></button>
 
 <div class="map-switcher glass">
   <button class="sw-btn" data-style="standard" title="Carte standard"><img src="https://api.maptiler.com/maps/streets-v2-light/0/0/0.png?key=nJnYbbeBVl4T09PtkVVv" alt="Standard"></button>
@@ -207,7 +209,7 @@
     <label>Type de son</label>
     <select id="radar-sound" class="setting-select">
       <option value="voice">🗣️ Voix seule</option><option value="beep">🔔 Bip seul</option>
-      <option value="both">🗣️🔔 Voix + Bip</option><option value="silent">🔇 Silencieux</option>
+      <option value="both">🗣️ Voix + Bip</option><option value="silent">🔇 Silencieux</option>
     </select>
     <label>Types à afficher</label>
     <div class="radar-types">
@@ -241,7 +243,7 @@
   </div>
 </div>
 
-<!-- Diagnostic (Pack C9) -->
+<!-- Diagnostic -->
 <div class="overlay hidden" id="diag-overlay">
   <div class="card">
     <h1>🩺 Diagnostic</h1>
@@ -288,6 +290,6 @@
   </div>
 </div>
 
-<script type="module" src="js/app.js?v=5"></script>
+<script type="module" src="js/app.js?v=6"></script>
 </body>
 </html>
