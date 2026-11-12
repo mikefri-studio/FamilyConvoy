@@ -1,5 +1,5 @@
 // ============================================================
-// APP v5 : GPS, Firebase, voix, radars, signalements, NAVIGATION
+// APP v6 : GPS, Firebase, voix (file d'attente), radars, nav, diag
 // ============================================================
 import { MAP_STYLES, TESLA_WORKER_URL, ROUTING_WORKER_URL } from './config.js';
 import { $, haversineKm, bearingDeg, ago, freshDev, colorFor, bus } from './utils.js';
@@ -15,11 +15,9 @@ import { bindRadio, playRadio } from './radio.js';
 import { loadRadars, updateRadarLayer, checkRadarAlert, toggleRadars, isRadarsEnabled, getSettings, saveSettings } from './radars.js';
 import { addReport } from './radarzen.js';
 import { bindNavigationUI, navigationTick, stopNavigation, isNavigating } from './navigation.js';
+import { bindDiagUI } from './diag.js';
 import * as MAP from './map.js';
 
-// ============================================================
-// 📍 GPS + réseau + batterie + wake lock
-// ============================================================
 function startGPS(){
   if (!navigator.geolocation){ $('#status').textContent='GPS non supporté'; return; }
   navigator.geolocation.watchPosition(p => {
@@ -36,7 +34,7 @@ function startGPS(){
     me.speed = Math.round((p.coords.speed||0)*3.6);
     S.lastGPSUpdate = now;
     updateStatus();
-    navigationTick(); // ⬅️ guidage à chaque position GPS
+    navigationTick();
   }, e => { $('#status').textContent = 'GPS refusé'; pushAlert('⚠️ Autorise la géolocalisation','warn'); },
   { enableHighAccuracy:true, maximumAge:2000, timeout:15000 });
 }
@@ -59,9 +57,6 @@ document.addEventListener('visibilitychange', () => {
   if (wakeLock !== null && document.visibilityState === 'visible') keepScreenOn();
 });
 
-// ============================================================
-// 📡 Partage Firebase
-// ============================================================
 function setRole(r, silent){
   if (me.role === r || !S.refs.myRef) return;
   me.role = r;
@@ -145,14 +140,11 @@ setInterval(() => {
   }
   checkRadarAlert();
   updateRadarLayer();
-  navigationTick(); // ⬅️ guidage aussi sur le tick 5s
+  navigationTick();
 }, 5000);
 
-// ============================================================
-// 🚪 Quitter / rejoindre
-// ============================================================
 function leaveGroup(clearName=false){
-  stopNavigation(); // ⬅️ coupe la navigation en quittant
+  stopNavigation();
   endTrip();
   if (S.refs.deviceRef) { R.onDisconnect(S.refs.deviceRef).cancel(); R.set(S.refs.deviceRef, null); }
   if (S.refs.myRef) {
@@ -203,13 +195,10 @@ function join(){
   $('#group-label').textContent = me.group;
   startGPS(); startSharing(); keepScreenOn();
   pushAlert(pairPerson ? `📺 Appairé au convoi ${me.group} (mode écran)` : `✅ Rejoint le convoi ${me.group}`, 'success');
-  speak(`Convoi ${me.group} rejoint`);
+  speak(`Convoi ${me.group} rejoint`, { interrupt:true });
 }
 $('#btn-join').onclick = join;
 
-// ============================================================
-// 🚨 Alertes intelligentes
-// ============================================================
 function detectAlerts(){
   const all = getAll();
   const myEntry = all[me.id];
@@ -244,56 +233,31 @@ function detectAlerts(){
   }
 }
 
-// ============================================================
-// 🛣️ Itinéraires via Worker Cloudflare (OpenRouteService)
-// ============================================================
 async function updateRoutes(){
   if (!S.joined || me.lat == null || !ROUTING_WORKER_URL) return;
-  
   const all = getAll();
   const jobs = [];
-  
   for (const [id, v] of Object.entries(all)) {
     if (id === me.id || v.lat == null) continue;
-    
     const rc = S.routeCache[id];
     if (rc && Date.now() - rc.ts < 60000) continue;
-    
     const workerUrl = `${ROUTING_WORKER_URL}?start=${me.lng},${me.lat}&end=${v.lng},${v.lat}`;
-    
     jobs.push(
-      fetch(workerUrl)
-        .then(r => r.json())
-        .then(j => {
-          if (j.features && j.features[0]) {
-            const props = j.features[0].properties;
-            S.routeCache[id] = {
-              km: props.summary.distance / 1000,
-              min: Math.round(props.summary.duration / 60),
-              ts: Date.now()
-            };
-          }
-        })
-        .catch(e => {
-          console.warn('[Routes] Erreur Worker :', e.message);
-        })
+      fetch(workerUrl).then(r => r.json()).then(j => {
+        if (j.features && j.features[0]) {
+          const props = j.features[0].properties;
+          S.routeCache[id] = { km: props.summary.distance / 1000, min: Math.round(props.summary.duration / 60), ts: Date.now() };
+        }
+      }).catch(e => console.warn('[Routes] Worker :', e.message))
     );
   }
-  
-  if (jobs.length) {
-    await Promise.allSettled(jobs);
-    render();
-  }
+  if (jobs.length) { await Promise.allSettled(jobs); render(); }
 }
 setInterval(updateRoutes, 30000);
 
-// ============================================================
-// 🗣️ Annonce vocale véhicule le plus proche
-// (désactivée pendant la navigation pour éviter le bavardage)
-// ============================================================
 setInterval(()=>{
   if (!S.joined || !S.voiceOn) return;
-  if (isNavigating()) return; // ⬅️ la nav parle déjà
+  if (isNavigating()) return;
   if (!(S.driverMode || me.speed > 20)) return;
   const all = getAll();
   const my = all[me.id];
@@ -315,9 +279,6 @@ setInterval(()=>{
   }
 }, 120000);
 
-// ============================================================
-// ⚡ Tesla
-// ============================================================
 if (TESLA_WORKER_URL) {
   $('#btn-tesla').classList.remove('hidden');
   $('#btn-tesla').onclick = () => window.open(TESLA_WORKER_URL + '/auth', '_blank');
@@ -336,9 +297,6 @@ if (TESLA_WORKER_URL) {
   loadTesla(); setInterval(loadTesla, 60000);
 }
 
-// ============================================================
-// 🎮 Événements globaux
-// ============================================================
 function toggleFollow(id){
   if (S.followId === id) S.followId = null;
   else {
@@ -416,9 +374,7 @@ function openShare(mode){
     ? `${location.origin}${location.pathname}?g=${me.group}&p=${me.id}`
     : `${location.origin}${location.pathname}?g=${me.group}`;
   $('#share-title').textContent = mode === 'pair' ? '🔗 Mon autre appareil' : '📤 Inviter';
-  $('#share-mode-hint').textContent = mode === 'pair'
-    ? 'Scanne ce QR sur ton autre appareil.'
-    : 'Partage ce lien pour inviter.';
+  $('#share-mode-hint').textContent = mode === 'pair' ? 'Scanne ce QR sur ton autre appareil.' : 'Partage ce lien pour inviter.';
   $('#share-link-text').textContent = S.shareLink;
   $('#qr-box').innerHTML = '';
   new QRCode($('#qr-box'), { text: S.shareLink, width: 200, height: 200, correctLevel: QRCode.CorrectLevel.M });
@@ -429,9 +385,6 @@ $('#btn-pair').onclick = () => { $('#menu-overlay').classList.add('hidden'); ope
 $('#btn-copy').onclick = () => navigator.clipboard.writeText(S.shareLink).then(()=> pushAlert('Lien copié ! 📋','info'));
 $('#btn-close-share').onclick = () => $('#share-overlay').classList.add('hidden');
 
-// ============================================================
-// 🎤 Voix
-// ============================================================
 function openVoiceOverlay(){
   const list = $('#voice-list');
   const options = listVoiceOptions();
@@ -443,10 +396,7 @@ function openVoiceOverlay(){
       const isActive = o.id === current;
       return `<div class="row ${isActive?'followed':''}" data-voice="${o.id.replace(/"/g,'&quot;')}">
         <div class="avatar" style="background:var(--accent);border-radius:12px">${o.icon || '🎤'}</div>
-        <div class="who">
-          <div class="nm">${o.name}</div>
-          <div class="sub">${o.sub}</div>
-        </div>
+        <div class="who"><div class="nm">${o.name}</div><div class="sub">${o.sub}</div></div>
         <div class="rt"><div class="dst">${isActive?'✓ actif':''}</div></div>
       </div>`;
     }).join('');
@@ -465,7 +415,6 @@ function bindVoiceUI(){
   $('#btn-voice').addEventListener('pointerdown', () => { voicePressTimer = setTimeout(openVoiceOverlay, 600); });
   $('#btn-voice').addEventListener('pointerup', () => clearTimeout(voicePressTimer));
   $('#btn-voice').addEventListener('pointercancel', () => clearTimeout(voicePressTimer));
-
   $('#voice-list').addEventListener('click', e => {
     const row = e.target.closest('.row[data-voice]');
     if (!row) return;
@@ -478,9 +427,6 @@ function bindVoiceUI(){
   $('#btn-close-voice').onclick = () => $('#voice-overlay').classList.add('hidden');
 }
 
-// ============================================================
-// 📷 Radars + Réglages
-// ============================================================
 function openRadarSettings(){
   const s = getSettings();
   $('#radar-radius').value = s.displayRadius;
@@ -494,7 +440,6 @@ function openRadarSettings(){
   $('#radar-vma').checked = s.showVMA;
   $('#radar-overlay').classList.remove('hidden');
 }
-
 $('#btn-radar').onclick = () => {
   const on = toggleRadars();
   $('#btn-radar').classList.toggle('active', on);
@@ -504,7 +449,6 @@ let radarPressTimer = null;
 $('#btn-radar').addEventListener('pointerdown', () => { radarPressTimer = setTimeout(openRadarSettings, 600); });
 $('#btn-radar').addEventListener('pointerup', () => clearTimeout(radarPressTimer));
 $('#btn-radar').addEventListener('pointercancel', () => clearTimeout(radarPressTimer));
-
 $('#btn-radar-apply').onclick = () => {
   saveSettings({
     displayRadius: parseInt($('#radar-radius').value),
@@ -521,7 +465,6 @@ $('#btn-radar-apply').onclick = () => {
   $('#radar-overlay').classList.add('hidden');
   loadRadars().then(() => updateRadarLayer());
 };
-
 $('#btn-radar-reset').onclick = () => {
   saveSettings({
     displayRadius: 25, alertDist: 0.5, minSpeed: 30,
@@ -532,75 +475,47 @@ $('#btn-radar-reset').onclick = () => {
   pushAlert('🔄 Réinitialisé', 'info', 2000);
   loadRadars().then(() => updateRadarLayer());
 };
-
 $('#btn-close-radar').onclick = () => $('#radar-overlay').classList.add('hidden');
 
-// ============================================================
-// 📍 Signalement
-// ============================================================
 $('#btn-report').onclick = () => {
-  if (!me.lat){
-    pushAlert('⚠️ Position GPS non disponible', 'warn');
-    return;
-  }
+  if (!me.lat){ pushAlert('⚠️ Position GPS non disponible', 'warn'); return; }
   $('#report-pos').textContent = `${me.lat.toFixed(5)}, ${me.lng.toFixed(5)}`;
   $('#report-desc').value = '';
   $('#report-overlay').classList.remove('hidden');
 };
-
 $('#btn-report-send').onclick = async () => {
   const type = $('#report-type').value;
   const desc = $('#report-desc').value.trim();
   const btn = $('#btn-report-send');
-  btn.textContent = '⏳ Envoi...';
-  btn.disabled = true;
+  btn.textContent = '⏳ Envoi...'; btn.disabled = true;
   const ok = await addReport(type, desc);
-  btn.textContent = '📤 Envoyer';
-  btn.disabled = false;
+  btn.textContent = '📤 Envoyer'; btn.disabled = false;
   if (ok){
     pushAlert('✅ Signalement envoyé !', 'success', 3000);
     $('#report-overlay').classList.add('hidden');
     loadRadars().then(() => updateRadarLayer());
-  } else {
-    pushAlert('❌ Erreur lors de l\'envoi', 'warn');
-  }
+  } else pushAlert('❌ Erreur lors de l\'envoi', 'warn');
 };
-
 $('#btn-close-report').onclick = () => $('#report-overlay').classList.add('hidden');
 
-// ============================================================
-// 📲 Service Worker PWA (fichier statique sw.js)
-// ============================================================
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.getRegistrations().then(registrations => {
     for (const registration of registrations) {
-      if (registration.active && registration.active.scriptURL.startsWith('blob:')) {
-        console.log('[App] Suppression de l\'ancien SW Blob');
-        registration.unregister();
-      }
+      if (registration.active && registration.active.scriptURL.startsWith('blob:')) registration.unregister();
     }
   });
-  
   const swUrl = new URL('../sw.js', import.meta.url).href;
   navigator.serviceWorker.register(swUrl, { updateViaCache: 'none' })
-    .then(registration => {
-      console.log('[App] SW enregistré :', swUrl);
-      setInterval(() => registration.update(), 60 * 60 * 1000);
-    })
-    .catch(err => console.error('[App] Erreur enregistrement SW:', err));
-  
+    .then(registration => setInterval(() => registration.update(), 60 * 60 * 1000))
+    .catch(err => console.error('[App] SW:', err));
   let refreshing = false;
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     if (refreshing) return;
     refreshing = true;
-    console.log('[App] Nouveau SW actif, rechargement de la page...');
     window.location.reload();
   });
 }
 
-// ============================================================
-// 🚀 Démarrage
-// ============================================================
 window.addEventListener('beforeunload', endTrip);
 setInterval(tripTick, 10000);
 setInterval(autoNight, 60000);
@@ -612,7 +527,8 @@ bindVoiceUI();
 bindAvatarUI();
 bindRadio();
 bindHistoryUI();
-bindNavigationUI(); // ⬅️ navigation
+bindNavigationUI();
+bindDiagUI();
 
 $('#btn-radar').classList.toggle('active', isRadarsEnabled());
 
