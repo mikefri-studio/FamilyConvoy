@@ -67,12 +67,17 @@
 <!-- Bouton nuit conservé mais masqué (le mode nuit reste automatique) -->
 <button id="btn-night" class="hidden"><span class="ico">🌙</span></button>
 
-<div class="map-switcher glass">
-  <button class="sw-btn" data-style="standard" title="Carte standard"><img src="https://api.maptiler.com/maps/streets-v2-light/0/0/0.png?key=nJnYbbeBVl4T09PtkVVv" alt="Standard"></button>
-  <button class="sw-btn" data-style="satellite" title="Vue satellite"><img src="https://api.maptiler.com/maps/satellite/0/0/0.png?key=nJnYbbeBVl4T09PtkVVv" alt="Satellite"></button>
-  <button class="sw-btn" data-style="hybrid" title="Satellite + noms"><img src="https://api.maptiler.com/maps/hybrid/0/0/0.png?key=nJnYbbeBVl4T09PtkVVv" alt="Hybride"></button>
-  <button class="sw-btn" data-style="ign" title="Plan IGN"><img src="https://data.geopf.fr/wmts?SERVICE=WMTS&VERSION=1.0.0&REQUEST=GetTile&STYLE=normal&LAYER=GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2&TILEMATRIXSET=PM&FORMAT=image/png&TILEMATRIX=6&TILEROW=22&TILECOL=32" alt="Plan IGN"></button>
-  <button class="sw-btn" data-style="ign-photo" title="Photo aérienne IGN"><img src="https://data.geopf.fr/wmts?SERVICE=WMTS&VERSION=1.0.0&REQUEST=GetTile&STYLE=normal&LAYER=ORTHOIMAGERY.ORTHOPHOTOS&TILEMATRIXSET=PM&FORMAT=image/jpeg&TILEMATRIX=6&TILEROW=22&TILECOL=32" alt="Photo IGN"></button>
+<!-- Sélecteur de carte repliable -->
+<div class="maps-wrap">
+  <input type="checkbox" id="maps-toggle" class="maps-check">
+  <label for="maps-toggle" class="maps-toggle glass" title="Choisir le fond de carte">🗺️</label>
+  <div class="map-switcher glass">
+    <button class="sw-btn" data-style="standard" title="Carte standard"><img src="https://api.maptiler.com/maps/streets-v2-light/0/0/0.png?key=nJnYbbeBVl4T09PtkVVv" alt="Standard"></button>
+    <button class="sw-btn" data-style="satellite" title="Vue satellite"><img src="https://api.maptiler.com/maps/satellite/0/0/0.png?key=nJnYbbeBVl4T09PtkVVv" alt="Satellite"></button>
+    <button class="sw-btn" data-style="hybrid" title="Satellite + noms"><img src="https://api.maptiler.com/maps/hybrid/0/0/0.png?key=nJnYbbeBVl4T09PtkVVv" alt="Hybride"></button>
+    <button class="sw-btn" data-style="ign" title="Plan IGN"><img src="https://data.geopf.fr/wmts?SERVICE=WMTS&VERSION=1.0.0&REQUEST=GetTile&STYLE=normal&LAYER=GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2&TILEMATRIXSET=PM&FORMAT=image/png&TILEMATRIX=6&TILEROW=22&TILECOL=32" alt="Plan IGN"></button>
+    <button class="sw-btn" data-style="ign-photo" title="Photo aérienne IGN"><img src="https://data.geopf.fr/wmts?SERVICE=WMTS&VERSION=1.0.0&REQUEST=GetTile&STYLE=normal&LAYER=ORTHOIMAGERY.ORTHOPHOTOS&TILEMATRIXSET=PM&FORMAT=image/jpeg&TILEMATRIX=6&TILEROW=22&TILECOL=32" alt="Photo IGN"></button>
+  </div>
 </div>
 
 <div class="driver-ui">
