@@ -173,3 +173,6 @@ body.night .maplibregl-canvas{filter:invert(1) hue-rotate(180deg) brightness(.9)
 .checkbox-label{display:flex;align-items:center;gap:6px;padding:8px 14px;border-radius:12px;background:rgba(127,127,127,.13);cursor:pointer;font-size:13px;font-weight:600;user-select:none}
 .checkbox-label input{accent-color:var(--accent);width:16px;height:16px}
 #report-overlay .card{max-width:400px}
+
+/* Masque définitivement les boutons Waze / Maps */
+.nav-actions{display:none!important}
