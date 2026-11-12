@@ -25,16 +25,18 @@
 
 <div class="alerts" id="alerts"></div>
 
-<!-- Bandeau de guidage navigation -->
+<!-- Bandeau de guidage (Pack A : next + progression + arrivée) -->
 <div class="nav-banner glass hidden" id="nav-banner">
   <div class="nav-main">
     <div class="nav-icon" id="nav-icon">⬆</div>
     <div class="nav-txt">
       <div class="nav-instr" id="nav-instr">—</div>
-      <div class="nav-sub"><span id="nav-dist"></span><span id="nav-eta"></span></div>
+      <div class="nav-next" id="nav-next"></div>
+      <div class="nav-sub"><span id="nav-dist"></span><span id="nav-eta"></span><span id="nav-arrive"></span></div>
     </div>
     <button class="nav-stop" id="btn-nav-stop">✕</button>
   </div>
+  <div class="nav-progress"><div class="nav-progress-fill" id="nav-progress-fill"></div></div>
   <div class="nav-actions">
     <button id="btn-nav-waze">🚦 Waze</button>
     <button id="btn-nav-maps">🗺️ Maps</button>
@@ -111,6 +113,7 @@
     <button id="btn-toggle-hide" class="btn-ghost">👻 Cacher ma position</button>
     <button id="btn-pair" class="btn-ghost">🔗 Mon autre appareil</button>
     <button id="btn-tesla" class="btn-ghost hidden">⚡ Connecter Tesla</button>
+    <button id="btn-diag" class="btn-ghost">🩺 Diagnostic</button>
     <button id="btn-switch" class="btn-ghost">🔁 Changer de convoi</button>
     <button id="btn-quit" class="btn-danger">🚪 Quitter le convoi</button>
     <button id="btn-close-menu" class="btn-ghost">Fermer</button>
@@ -144,7 +147,7 @@
   </div>
 </div>
 
-<!-- Sélecteur de voix -->
+<!-- Voix -->
 <div class="overlay hidden" id="voice-overlay">
   <div class="card">
     <h1>🎤 Voix française</h1>
@@ -156,13 +159,20 @@
   </div>
 </div>
 
-<!-- Navigation : choix destination -->
+<!-- Navigation -->
 <div class="overlay hidden" id="nav-overlay">
   <div class="card">
     <h1>🧭 Où va-t-on ?</h1>
     <label>Adresse ou lieu</label>
     <input id="nav-search" placeholder="Ex : 12 rue de la Paix, Paris">
     <div id="nav-results" class="nav-list"></div>
+    <label>Option d'itinéraire</label>
+    <select id="nav-route-mode" class="setting-select">
+      <option value="fastest">⚡ Le plus rapide</option>
+      <option value="shortest">📏 Le plus court</option>
+      <option value="no-highway">🛣️ Éviter les autoroutes</option>
+      <option value="no-toll">💶 Éviter les péages</option>
+    </select>
     <label>Membres du convoi</label>
     <div id="nav-members" class="nav-list"></div>
     <label>Favoris</label>
@@ -177,42 +187,28 @@
 <div class="overlay hidden" id="radar-overlay">
   <div class="card">
     <h1>📷 Réglages Radars</h1>
-
     <label>Rayon d'affichage</label>
     <select id="radar-radius" class="setting-select">
-      <option value="5">5 km</option>
-      <option value="10">10 km</option>
-      <option value="25">25 km (recommandé)</option>
-      <option value="50">50 km</option>
-      <option value="100">100 km</option>
-      <option value="0">Toute la France</option>
+      <option value="5">5 km</option><option value="10">10 km</option>
+      <option value="25">25 km (recommandé)</option><option value="50">50 km</option>
+      <option value="100">100 km</option><option value="0">Toute la France</option>
     </select>
-
     <label>Distance d'alerte</label>
     <select id="radar-alert" class="setting-select">
-      <option value="0.2">200 m</option>
-      <option value="0.5">500 m (recommandé)</option>
-      <option value="1">1 km</option>
-      <option value="2">2 km</option>
+      <option value="0.2">200 m</option><option value="0.5">500 m (recommandé)</option>
+      <option value="1">1 km</option><option value="2">2 km</option>
     </select>
-
     <label>Vitesse minimale pour alerter</label>
     <select id="radar-minspeed" class="setting-select">
-      <option value="0">Toujours</option>
-      <option value="30">Dès 30 km/h</option>
-      <option value="50">Dès 50 km/h (recommandé)</option>
-      <option value="70">Dès 70 km/h</option>
+      <option value="0">Toujours</option><option value="30">Dès 30 km/h</option>
+      <option value="50">Dès 50 km/h (recommandé)</option><option value="70">Dès 70 km/h</option>
       <option value="90">Dès 90 km/h</option>
     </select>
-
     <label>Type de son</label>
     <select id="radar-sound" class="setting-select">
-      <option value="voice">🗣️ Voix seule</option>
-      <option value="beep">🔔 Bip seul</option>
-      <option value="both">🗣️ Voix + Bip</option>
-      <option value="silent">🔇 Silencieux</option>
+      <option value="voice">🗣️ Voix seule</option><option value="beep">🔔 Bip seul</option>
+      <option value="both">🗣️🔔 Voix + Bip</option><option value="silent">🔇 Silencieux</option>
     </select>
-
     <label>Types à afficher</label>
     <div class="radar-types">
       <label class="checkbox-label"><input type="checkbox" id="radar-fixed" checked> 📷 Fixes</label>
@@ -221,7 +217,6 @@
       <label class="checkbox-label"><input type="checkbox" id="radar-radarzen" checked> 🌐 RadarZen</label>
       <label class="checkbox-label"><input type="checkbox" id="radar-vma" checked> Afficher VMA</label>
     </div>
-
     <button id="btn-radar-apply" class="btn-primary">✅ Appliquer</button>
     <button id="btn-radar-reset" class="btn-ghost">🔄 Réinitialiser</button>
     <button id="btn-close-radar" class="btn-ghost">Fermer</button>
@@ -233,22 +228,26 @@
   <div class="card">
     <h1>📍 Signaler un événement</h1>
     <p class="hint" style="margin-top:0">Position : <b id="report-pos">—</b></p>
-    
     <label>Type d'événement</label>
     <select id="report-type" class="setting-select">
-      <option value="accident">🚗 Accident</option>
-      <option value="travaux">🚧 Travaux</option>
-      <option value="radar_mobile">🚨 Radar mobile</option>
-      <option value="danger">⚠️ Danger</option>
-      <option value="bouchon">🐌 Bouchon</option>
-      <option value="autre">❓ Autre</option>
+      <option value="accident">🚗 Accident</option><option value="travaux">🚧 Travaux</option>
+      <option value="radar_mobile">🚨 Radar mobile</option><option value="danger">⚠️ Danger</option>
+      <option value="bouchon">🐌 Bouchon</option><option value="autre">❓ Autre</option>
     </select>
-
     <label>Description (optionnel)</label>
     <input type="text" id="report-desc" placeholder="Ex : 2 voies bloquées..." maxlength="100" style="width:100%;padding:11px 13px;border:2px solid transparent;border-radius:12px;background:rgba(127,127,127,.13);font-size:14px;font-weight:600;color:var(--text);margin-top:4px">
-
     <button id="btn-report-send" class="btn-primary">📤 Envoyer</button>
     <button id="btn-close-report" class="btn-ghost">Annuler</button>
+  </div>
+</div>
+
+<!-- Diagnostic (Pack C9) -->
+<div class="overlay hidden" id="diag-overlay">
+  <div class="card">
+    <h1>🩺 Diagnostic</h1>
+    <div id="diag-body" class="diag-body"></div>
+    <button id="btn-diag-refresh" class="btn-ghost">🔄 Rafraîchir</button>
+    <button id="btn-close-diag" class="btn-ghost">Fermer</button>
   </div>
 </div>
 
@@ -289,6 +288,6 @@
   </div>
 </div>
 
-<script type="module" src="js/app.js?v=3"></script>
+<script type="module" src="js/app.js?v=5"></script>
 </body>
 </html>
