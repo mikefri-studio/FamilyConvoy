@@ -1,7 +1,9 @@
 // ============================================================
-// NAVIGATION v6 : VALHALLA (instructions FR natives) en principal
-// + OSRM en secours auto. Anti-crash : zéro caméra, zéro marqueur,
-// une seule couche ligne, timeouts réseau, try/catch partout.
+// NAVIGATION v7 : Valhalla (FR) + OSRM secours
+// Pack A : bandeau enrichi (ETA, "puis", progression), annonces
+//          adaptatives à la vitesse, mode conduite gros chiffres
+// Pack B5 : options d'itinéraire (rapide/court/sans autoroute/sans péage)
+// Anti-crash conservé : zéro caméra, zéro marqueur, 1 ligne, timeouts
 // ============================================================
 import { map } from './map.js';
 import { S, me, getAll } from './state.js';
@@ -12,6 +14,7 @@ const VALHALLA  = 'https://valhalla1.openstreetmap.de/route';
 const OSRM      = 'https://router.project-osrm.org/route/v1/driving/';
 const NOMINATIM = 'https://nominatim.openstreetmap.org/search';
 const FAV_KEY   = 'fc_nav_favs';
+const MODE_KEY  = 'fc_nav_mode';
 const SRC = 'nav-route', LINE = 'nav-route-line';
 
 let nav = null;
@@ -31,7 +34,6 @@ async function fetchTimeout(url, opts = {}, ms = 8000){
   } finally { clearTimeout(t); }
 }
 
-// ---------- Décodage polyline Valhalla (précision 6) ----------
 function decodePolyline(str, precision = 6){
   let index = 0, lat = 0, lng = 0, shift = 0, result = 0, byte = null;
   const coords = [];
@@ -47,7 +49,6 @@ function decodePolyline(str, precision = 6){
   }
   return coords.filter(p => isFinite(p[0]) && isFinite(p[1]));
 }
-
 function buildCum(coords){
   const cum = [0];
   for (let i = 1; i < coords.length; i++)
@@ -55,6 +56,7 @@ function buildCum(coords){
   return cum;
 }
 const fmtDist = m => m < 1000 ? `${Math.round(m/10)*10} m` : `${(m/1000).toFixed(1)} km`;
+const routeMode = () => { try { return localStorage.getItem(MODE_KEY) || 'fastest'; } catch(e){ return 'fastest'; } };
 
 function iconFor(t){
   switch (t){
@@ -71,16 +73,20 @@ function iconFor(t){
   }
 }
 
-// ---------- Moteur 1 : VALHALLA (FR natif) ----------
-async function routeValhalla(from, to){
+// ---------- Valhalla (options B5) ----------
+async function routeValhalla(from, to, mode){
+  const body = {
+    locations: [{ lat: from.lat, lon: from.lng }, { lat: to.lat, lon: to.lng }],
+    directions_options: { language: 'fr-FR', units: 'kilometers' }
+  };
+  if (mode === 'shortest') body.costing = 'shortest';
+  else {
+    body.costing = 'auto';
+    if (mode === 'no-highway') body.costing_options = { use_highways: 0.0 };
+    if (mode === 'no-toll')    body.costing_options = { use_tolls: 0.0 };
+  }
   const r = await fetchTimeout(VALHALLA, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      locations: [{ lat: from.lat, lon: from.lng }, { lat: to.lat, lon: to.lng }],
-      costing: 'auto',
-      directions_options: { language: 'fr-FR', units: 'kilometers' }
-    })
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
   }, 6000);
   const j = await r.json();
   const leg = j.trip && j.trip.legs && j.trip.legs[0];
@@ -88,21 +94,17 @@ async function routeValhalla(from, to){
   const coords = decodePolyline(leg.shape, 6);
   if (coords.length < 2) throw new Error('tracé Valhalla vide');
   return {
-    engine: 'Valhalla',
-    coords,
+    engine: 'Valhalla', coords,
     maneuvers: (leg.maneuvers || []).map(m => ({
-      begin: m.begin_shape_index || 0,
-      end:   m.end_shape_index || 0,
-      text:  m.instruction || '',
-      type:  m.type || 0,
-      time:  m.time || 0
+      begin: m.begin_shape_index || 0, end: m.end_shape_index || 0,
+      text: m.instruction || '', type: m.type || 0, time: m.time || 0
     })),
     summary: { km: (j.trip.summary && j.trip.summary.length) || 0,
                min: ((j.trip.summary && j.trip.summary.time) || 0) / 60 }
   };
 }
 
-// ---------- Moteur 2 : OSRM (secours, traduction FR) ----------
+// ---------- OSRM secours ----------
 function osrmType(st){
   const m = st.maneuver || {}, t = m.type || '', mod = m.modifier || '';
   if (t === 'depart') return 1;
@@ -155,7 +157,7 @@ async function routeOSRM(from, to){
   return { engine: 'OSRM', coords, maneuvers, summary: { km: rt.distance / 1000, min: rt.duration / 60 } };
 }
 
-// ---------- Couche ligne unique ----------
+// ---------- Couche ligne ----------
 function ensureLayer(){
   if (!map || !ready(map)) return;
   if (!hooked){
@@ -182,36 +184,85 @@ function clearRoute(){
   if (s) safe(() => s.setData({ type:'Feature', geometry:{ type:'LineString', coordinates:[] } }));
 }
 
-// ---------- Bandeau ----------
-function setBanner(icon, instr, dist, eta){
+// ---------- Bandeau enrichi (Pack A) ----------
+function setBanner(icon, instr, next, dist, eta, arrive){
   safe(() => {
     $('#nav-icon').textContent = icon;
     $('#nav-instr').textContent = instr;
+    $('#nav-next').textContent = next || '';
     $('#nav-dist').textContent = dist;
     $('#nav-eta').textContent = eta;
+    $('#nav-arrive').textContent = arrive;
   });
+}
+function setProgress(pct){
+  safe(() => { $('#nav-progress-fill').style.width = Math.min(100, Math.max(0, pct)) + '%'; });
 }
 function etaText(remainKm){
   if (!nav || !nav.summary || !nav.summary.km || !nav.summary.min) return '';
   const speed = nav.summary.km / nav.summary.min;
   return `${remainKm.toFixed(1)} km · ${Math.max(1, Math.round(remainKm / speed))} min`;
 }
+function arrivalText(remainKm){
+  if (!nav || !nav.summary || !nav.summary.km || !nav.summary.min) return '';
+  const speed = nav.summary.km / nav.summary.min;
+  const ms = (remainKm / speed) * 60000;
+  const d = new Date(Date.now() + ms);
+  return 'arr ' + d.toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit' });
+}
 function nextManeuver(){
   if (!nav || !nav.maneuvers || !nav.maneuvers.length) return null;
   return nav.maneuvers.find(m => m.begin >= nav.idx && m.type !== 1) || nav.maneuvers[nav.maneuvers.length - 1];
 }
+function maneuverAfter(nm){
+  if (!nm) return null;
+  const i = nav.maneuvers.indexOf(nm);
+  for (let k = i + 1; k < nav.maneuvers.length; k++){
+    if (nav.maneuvers[k].type !== 1) return nav.maneuvers[k];
+  }
+  return null;
+}
 function updateBanner(){
   if (!nav) return;
   if (!nav.coords.length){
-    setBanner('⏳', nav.computing ? 'Calcul de l’itinéraire…' : 'En attente du GPS…', '', '');
+    setBanner('⏳', nav.computing ? 'Calcul de l’itinéraire…' : 'En attente du GPS…', '', '', '', '');
+    setProgress(0);
     return;
   }
   const remainKm = Math.max(0, nav.total - (nav.cum[nav.idx] || 0));
   const nm = nextManeuver();
+  const nm2 = maneuverAfter(nm);
+  const pct = nav.total > 0 ? (1 - remainKm / nav.total) * 100 : 0;
   if (nm){
     const dToMan = Math.max(0, (nav.cum[nm.begin] || 0) - (nav.cum[nav.idx] || 0)) * 1000;
-    setBanner(iconFor(nm.type), nm.text || 'Continuez', 'dans ' + fmtDist(dToMan), etaText(remainKm));
-  } else setBanner('⬆', 'Continuez', '', etaText(remainKm));
+    setBanner(iconFor(nm.type), nm.text || 'Continuez',
+      nm2 ? 'puis ' + (nm2.text || '').slice(0, 42) : '',
+      'dans ' + fmtDist(dToMan), etaText(remainKm), arrivalText(remainKm));
+  } else {
+    setBanner('⬆', 'Continuez', '', '', etaText(remainKm), arrivalText(remainKm));
+  }
+  setProgress(pct);
+}
+
+// ---------- Annonces adaptatives (Pack A) ----------
+function thresholds(){
+  const s = me.speed || 0;
+  if (s >= 80) return [1000, 300];
+  if (s >= 50) return [500, 150];
+  return [200, 50];
+}
+function announce(nm, dToMan){
+  for (const th of thresholds()){
+    const key = nm.begin + ':' + th;
+    if (dToMan <= th && !nav.announced.has(key)){
+      nav.announced.add(key);
+      speak(`Dans ${Math.round(dToMan/10)*10} mètres, ${nm.text}`);
+    }
+  }
+  if (dToMan < 25 && !nav.announced.has(nm.begin + ':now')){
+    nav.announced.add(nm.begin + ':now');
+    speak(nm.text);
+  }
 }
 
 // ---------- Cœur ----------
@@ -228,10 +279,9 @@ async function computeRoute(){
     if (!to) throw new Error('destination indisponible');
     nav.dest.lat = to.lat; nav.dest.lng = to.lng;
     let r = null;
-    try {
-      r = await routeValhalla({ lat: me.lat, lng: me.lng }, to);
-    } catch(ev){
-      console.warn('[Nav] Valhalla KO (' + ev.message + ') → secours OSRM');
+    try { r = await routeValhalla({ lat: me.lat, lng: me.lng }, to, nav.mode); }
+    catch(ev){
+      console.warn('[Nav] Valhalla KO (' + ev.message + ') → OSRM');
       r = await routeOSRM({ lat: me.lat, lng: me.lng }, to);
     }
     if (!nav) return;
@@ -240,7 +290,7 @@ async function computeRoute(){
     nav.maneuvers = r.maneuvers; nav.summary = r.summary; nav.engine = r.engine;
     nav.idx = 0; nav.announced = new Set(); nav.offCount = 0;
     setTimeout(() => { ensureLayer(); setRouteData(); }, 0);
-    console.log('[Nav] OK via', r.engine, ':', nav.coords.length, 'points,', nav.total.toFixed(2), 'km');
+    console.log('[Nav] OK via', r.engine, '(', nav.mode, ') :', nav.coords.length, 'points,', nav.total.toFixed(2), 'km');
   } catch(e){
     console.warn('[Nav] échec total :', e.message);
     pushAlert('❌ Itinéraire impossible (' + e.message + ')', 'warn', 5000);
@@ -261,19 +311,6 @@ function nearestIndex(){
   }
   return best;
 }
-function announce(nm, dToMan){
-  for (const th of [300, 100]){
-    const key = nm.begin + ':' + th;
-    if (dToMan <= th && !nav.announced.has(key)){
-      nav.announced.add(key);
-      speak(`Dans ${Math.round(dToMan/10)*10} mètres, ${nm.text}`);
-    }
-  }
-  if (dToMan < 25 && !nav.announced.has(nm.begin + ':now')){
-    nav.announced.add(nm.begin + ':now');
-    speak(nm.text);
-  }
-}
 
 export function navigationTick(){
   safe(() => {
@@ -293,7 +330,7 @@ export function navigationTick(){
 
     nav.idx = nearestIndex();
     if (haversineKm(me.lat, me.lng, nav.dest.lat, nav.dest.lng) < 0.04){
-      speak('Vous êtes arrivé à destination');
+      speak('Vous êtes arrivé à destination', { interrupt:true });
       pushAlert('🏁 Arrivé à destination', 'success', 5000);
       stopNavigation(true);
       return;
@@ -318,15 +355,16 @@ export async function startNavigation(dest){
   if (me.lat == null || me.lng == null){ pushAlert('⚠️ GPS requis pour naviguer', 'warn'); return; }
   stopNavigation(true);
   nav = { dest:{ ...dest }, memberId: dest.memberId || null, coords:[], cum:[], total:0,
-          maneuvers:[], idx:0, announced:new Set(), offCount:0, engine:null,
+          maneuvers:[], idx:0, announced:new Set(), offCount:0, engine:null, mode: routeMode(),
           lastReroute:0, lastMemberRefresh:0, computing:false, summary:null };
   S.followId = me.id;
   $('#btn-nav').classList.add('active');
   $('#nav-banner').classList.remove('hidden');
   $('#nav-overlay').classList.add('hidden');
-  setBanner('⏳', 'Calcul de l’itinéraire…', '', '');
+  setBanner('⏳', 'Calcul de l’itinéraire…', '', '', '', '');
+  setProgress(0);
   await computeRoute();
-  if (nav) speak('Navigation démarrée vers ' + nav.dest.name);
+  if (nav) speak('Navigation démarrée vers ' + nav.dest.name, { interrupt:true });
 }
 export function stopNavigation(silent){
   nav = null;
@@ -372,6 +410,7 @@ async function search(q){
 export function openNavOverlay(){
   renderMembers(); renderFavs();
   $('#nav-search').value = ''; $('#nav-results').innerHTML = '';
+  $('#nav-route-mode').value = routeMode();
   $('#nav-overlay').classList.remove('hidden');
 }
 
@@ -379,6 +418,7 @@ export function openNavOverlay(){
 export function bindNavigationUI(){
   $('#btn-nav').onclick = () => { if (nav) stopNavigation(); else openNavOverlay(); };
   $('#btn-close-nav').onclick = () => $('#nav-overlay').classList.add('hidden');
+  $('#nav-route-mode').onchange = e => localStorage.setItem(MODE_KEY, e.target.value);
   $('#nav-search').addEventListener('input', e => {
     clearTimeout(searchTimer);
     searchTimer = setTimeout(() => search(e.target.value.trim()), 500);
@@ -419,6 +459,7 @@ export function bindNavigationUI(){
 window.FC_NAV = {
   active:  () => !!nav,
   engine:  () => nav ? nav.engine : null,
+  mode:    () => nav ? nav.mode : routeMode(),
   points:  () => nav ? nav.coords.length : 0,
   drawn:   () => { const s = map && map.getSource(SRC); return s ? s.serialize().data.geometry.coordinates.length : -1; }
 };
