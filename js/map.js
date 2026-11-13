@@ -1,12 +1,14 @@
 // ============================================================
-// MAP : les 3 cartes, switcher, marqueurs, tracés, replay
+// MAP : 3 cartes, switcher, marqueurs, tracés, replay
+// + caméra conduite "cap vers le haut" (réversible)
+// + enregistre la carte conduite pour les radars
 // ============================================================
 import { MAP_STYLES, STYLE_LABELS } from './config.js';
 import { S, me, getAll } from './state.js';
 import { $, haversineKm, ago, bus } from './utils.js';
 import { pushAlert } from './notify.js';
 import { applyAvatarToEl } from './avatar.js';
-import { setMainMap, initRadarLayer } from './radars.js';
+import { setMainMap, setDriverMap, initRadarLayer } from './radars.js';
 
 export let map = null, driverMap = null, replayMap = null;
 let replayMarker = null, replayRAF = null, replayPts = [];
@@ -26,18 +28,14 @@ export function initMaps(){
 
   map.on('load', () => {
     injectTrailsLayer(map, 'trails', 'trail-lines');
-    initRadarLayer(); 
+    initRadarLayer();
     bus.emit('render');
   });
-
-  // 🚀 CORRECTION : Écoute du changement de style pour la carte principale
-  // Déclenché à chaque fois que l'utilisateur change de fond de carte
   map.on('style.load', () => {
     injectTrailsLayer(map, 'trails', 'trail-lines');
-    initRadarLayer(); 
-    bus.emit('render'); // Redessine les marqueurs HTML des membres
+    initRadarLayer();
+    bus.emit('render');
   });
-  
   map.on('dragstart', () => { if (S.followId) { S.followId = null; bus.emit('follow-stop'); } });
 
   document.querySelectorAll('.sw-btn').forEach(btn => {
@@ -51,8 +49,6 @@ export function changeMapStyle(styleKey){
   S.currentStyle = styleKey;
   localStorage.setItem('fc_mapStyle', styleKey);
   document.querySelectorAll('.sw-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.style === styleKey));
-  
-  // Le setStyle va déclencher les événements 'style.load' sur chaque carte
   [map, driverMap, replayMap].forEach(m => { if (m) m.setStyle(MAP_STYLES[styleKey]); });
   pushAlert(`🗺️ Carte ${STYLE_LABELS[styleKey]}`, 'info', 1800);
 }
@@ -112,8 +108,15 @@ export function updateMapVisuals(all){
     Object.values(all).forEach(v => v.lat!=null && b.extend([v.lng, v.lat]));
     map.fitBounds(b, {padding:60, maxZoom:12}); S.boundsDone = true;
   }
-  if (S.driverMode && S.followMe && me.lat!=null && driverMap) {
-    driverMap.easeTo({ center:[me.lng, me.lat], zoom:15, duration:1500 });
+
+  //  Caméra conduite : centrée + option "cap vers le haut"
+  if (S.driverMode && S.followMe && me.lat != null && driverMap) {
+    const headingUp = localStorage.getItem('fc_driver_heading') === '1';
+    driverMap.easeTo({
+      center:[me.lng, me.lat], zoom:15, pitch:45,
+      bearing: headingUp ? (S.myHeading || 0) : 0,
+      duration:1500
+    });
   }
   if (!S.driverMode && S.followId && all[S.followId] && all[S.followId].lat != null) {
     map.easeTo({ center:[all[S.followId].lng, all[S.followId].lat], duration:1200 });
@@ -128,16 +131,20 @@ export function initDriverMap(){
     });
     driverMap.addControl(new maplibregl.NavigationControl({showCompass:false}),'bottom-right');
     driverMap.on('dragstart', ()=> S.followMe=false);
-    
-    // 🚀 CORRECTION : Écoute du changement de style pour la carte conducteur
     driverMap.on('style.load', () => {
-        injectTrailsLayer(driverMap, 'trails-d', 'trail-lines-d');
-        bus.emit('render'); 
+      injectTrailsLayer(driverMap, 'trails-d', 'trail-lines-d');
+      initRadarLayer();
+      bus.emit('render');
     });
     driverMap.on('load', () => {
-        injectTrailsLayer(driverMap, 'trails-d', 'trail-lines-d');
+      injectTrailsLayer(driverMap, 'trails-d', 'trail-lines-d');
+      initRadarLayer();
     });
-  } else setTimeout(()=> driverMap.resize(), 50);
+    setDriverMap(driverMap); // ⬅️ radars sur la carte conduite
+  } else {
+    setTimeout(()=> driverMap.resize(), 50);
+    setDriverMap(driverMap);
+  }
 }
 
 function setReplayLine(coords){
@@ -159,7 +166,6 @@ function prepareReplay(){
     replayMap.fitBounds(b, {padding:50, maxZoom:16});
   }
 }
-
 export function playReplay(){
   if (!replayMap || !replayMap.getSource('replay-line') || replayPts.length < 2) return;
   cancelAnimationFrame(replayRAF);
@@ -174,7 +180,6 @@ export function playReplay(){
   };
   replayRAF = requestAnimationFrame(step);
 }
-
 export function openReplay(item, pts){
   replayPts = pts;
   const avg = item.min>0 ? Math.round(item.km/(item.min/60)) : '—';
@@ -182,11 +187,8 @@ export function openReplay(item, pts){
   $('#replay-stats').textContent = `${item.km} km · ${item.min} min · Ø ${avg} km/h · ${pts.length} pts`;
   $('#history-overlay').classList.add('hidden');
   $('#replay-overlay').classList.remove('hidden');
-  
   if (!replayMap) {
     replayMap = new maplibregl.Map({ container:'replay-map', style: MAP_STYLES[S.currentStyle], center:[2.35,48.85], zoom:5 });
-    
-    // 🚀 CORRECTION : Écoute du changement de style pour la carte de replay
     replayMap.on('style.load', () => {
       if (!replayMap.getSource('replay-line')) {
         replayMap.addSource('replay-line', { type:'geojson', data:{ type:'Feature', geometry:{ type:'LineString', coordinates:replayPts } } });
@@ -195,17 +197,12 @@ export function openReplay(item, pts){
       } else {
         replayMap.getSource('replay-line').setData({ type:'Feature', geometry:{ type:'LineString', coordinates:replayPts } });
       }
-      prepareReplay(); 
+      prepareReplay(); playReplay();
     });
   } else {
-      setTimeout(()=>{ 
-          replayMap.resize(); 
-          prepareReplay(); 
-          playReplay(); 
-      }, 60);
+    setTimeout(()=>{ replayMap.resize(); prepareReplay(); playReplay(); }, 60);
   }
 }
-
 export function closeReplay(){
   cancelAnimationFrame(replayRAF);
   $('#replay-overlay').classList.add('hidden');
