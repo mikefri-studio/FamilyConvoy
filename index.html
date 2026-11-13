@@ -51,10 +51,8 @@
   <div class="panel-body" id="list"><div class="row"><span>Chargement…</span></div></div>
 </div>
 
-<!-- Dock : NUIT retiré, MICRO intégré à la place -->
+<!-- Dock allégé : 7 boutons -->
 <div class="dock glass">
-  <button class="dock-btn" id="btn-share"><span class="ico">📤</span><span class="lbl">Inviter</span></button>
-  <button class="dock-btn" id="btn-history"><span class="ico">📊</span><span class="lbl">Trajets</span></button>
   <button class="dock-btn active" id="btn-voice"><span class="ico">🔊</span><span class="lbl">Voix</span></button>
   <button class="dock-btn drive" id="btn-driver"><span class="ico">🚗</span><span class="lbl">Conduite</span></button>
   <button class="dock-btn" id="btn-nav"><span class="ico">🧭</span><span class="lbl">Nav</span></button>
@@ -64,21 +62,8 @@
   <button class="dock-btn" id="btn-menu"><span class="ico">⚙️</span><span class="lbl">Menu</span></button>
 </div>
 
-<!-- Bouton nuit conservé mais masqué (le mode nuit reste automatique) -->
+<!-- Bouton nuit conservé mais masqué (mode nuit automatique) -->
 <button id="btn-night" class="hidden"><span class="ico">🌙</span></button>
-
-<!-- Sélecteur de carte repliable -->
-<div class="maps-wrap">
-  <input type="checkbox" id="maps-toggle" class="maps-check">
-  <label for="maps-toggle" class="maps-toggle glass" title="Choisir le fond de carte">🗺️</label>
-  <div class="map-switcher glass">
-    <button class="sw-btn" data-style="standard" title="Carte standard"><img src="https://api.maptiler.com/maps/streets-v2-light/0/0/0.png?key=nJnYbbeBVl4T09PtkVVv" alt="Standard"></button>
-    <button class="sw-btn" data-style="satellite" title="Vue satellite"><img src="https://api.maptiler.com/maps/satellite/0/0/0.png?key=nJnYbbeBVl4T09PtkVVv" alt="Satellite"></button>
-    <button class="sw-btn" data-style="hybrid" title="Satellite + noms"><img src="https://api.maptiler.com/maps/hybrid/0/0/0.png?key=nJnYbbeBVl4T09PtkVVv" alt="Hybride"></button>
-    <button class="sw-btn" data-style="ign" title="Plan IGN"><img src="https://data.geopf.fr/wmts?SERVICE=WMTS&VERSION=1.0.0&REQUEST=GetTile&STYLE=normal&LAYER=GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2&TILEMATRIXSET=PM&FORMAT=image/png&TILEMATRIX=6&TILEROW=22&TILECOL=32" alt="Plan IGN"></button>
-    <button class="sw-btn" data-style="ign-photo" title="Photo aérienne IGN"><img src="https://data.geopf.fr/wmts?SERVICE=WMTS&VERSION=1.0.0&REQUEST=GetTile&STYLE=normal&LAYER=ORTHOIMAGERY.ORTHOPHOTOS&TILEMATRIXSET=PM&FORMAT=image/jpeg&TILEMATRIX=6&TILEROW=22&TILECOL=32" alt="Photo IGN"></button>
-  </div>
-</div>
 
 <div class="driver-ui">
   <div class="driver-map" id="driver-map">
@@ -112,11 +97,21 @@
   </div>
 </div>
 
-<!-- Menu -->
+<!-- Menu : Inviter + Trajets + Fond de carte intégrés -->
 <div class="overlay hidden" id="menu-overlay">
   <div class="card">
     <h1>⚙️ Convoi <span id="menu-group">—</span></h1>
-    <button id="btn-avatar" class="btn-primary">🎭 Mon logo</button>
+    <button id="btn-share" class="btn-primary">📤 Inviter / partager</button>
+    <button id="btn-history" class="btn-ghost">📊 Trajets du convoi</button>
+    <label>Fond de carte</label>
+    <div class="menu-maps">
+      <button class="sw-btn" data-style="standard" title="Carte standard"><img src="https://api.maptiler.com/maps/streets-v2-light/0/0/0.png?key=nJnYbbeBVl4T09PtkVVv" alt="Standard"></button>
+      <button class="sw-btn" data-style="satellite" title="Vue satellite"><img src="https://api.maptiler.com/maps/satellite/0/0/0.png?key=nJnYbbeBVl4T09PtkVVv" alt="Satellite"></button>
+      <button class="sw-btn" data-style="hybrid" title="Satellite + noms"><img src="https://api.maptiler.com/maps/hybrid/0/0/0.png?key=nJnYbbeBVl4T09PtkVVv" alt="Hybride"></button>
+      <button class="sw-btn" data-style="ign" title="Plan IGN"><img src="https://data.geopf.fr/wmts?SERVICE=WMTS&VERSION=1.0.0&REQUEST=GetTile&STYLE=normal&LAYER=GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2&TILEMATRIXSET=PM&FORMAT=image/png&TILEMATRIX=6&TILEROW=22&TILECOL=32" alt="Plan IGN"></button>
+      <button class="sw-btn" data-style="ign-photo" title="Photo aérienne IGN"><img src="https://data.geopf.fr/wmts?SERVICE=WMTS&VERSION=1.0.0&REQUEST=GetTile&STYLE=normal&LAYER=ORTHOIMAGERY.ORTHOPHOTOS&TILEMATRIXSET=PM&FORMAT=image/jpeg&TILEMATRIX=6&TILEROW=22&TILECOL=32" alt="Photo IGN"></button>
+    </div>
+    <button id="btn-avatar" class="btn-ghost">🎭 Mon logo</button>
     <button id="btn-toggle-hide" class="btn-ghost">👻 Cacher ma position</button>
     <button id="btn-pair" class="btn-ghost">🔗 Mon autre appareil</button>
     <button id="btn-tesla" class="btn-ghost hidden">⚡ Connecter Tesla</button>
@@ -295,6 +290,6 @@
   </div>
 </div>
 
-<script type="module" src="js/app.js?v=6"></script>
+<script type="module" src="js/app.js?v=7"></script>
 </body>
 </html>
