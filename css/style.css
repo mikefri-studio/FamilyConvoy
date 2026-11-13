@@ -197,3 +197,11 @@ body.night .maplibregl-canvas{filter:invert(1) hue-rotate(180deg) brightness(.9)
   .dock-btn .lbl{display:none}
   .menu-maps .sw-btn{width:38px;height:38px}
 }
+/* Bouton caméra cap vers le haut (mode conduite) */
+.driver-heading{position:absolute;bottom:15px;left:15px;background:rgba(26,115,232,.92);color:#fff;border:none;
+  padding:11px 14px;border-radius:20px;font-weight:800;z-index:5;cursor:pointer;backdrop-filter:blur(6px);font-size:16px}
+.driver-heading.active{background:rgba(0,230,118,.92);color:#0b0d10}
+
+/* Alertes : jamais sous le bandeau de guidage */
+body.driver .alerts{top:16px}
+body:has(#nav-banner:not(.hidden)) .alerts{top:130px}
