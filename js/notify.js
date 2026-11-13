@@ -1,6 +1,6 @@
 // ============================================================
-// NOTIFY v7 : ElevenLabs + voix système + FILE D'ATTENTE vocale
-// (les annonces ne se coupent plus ; option interrupt au besoin)
+// NOTIFY v8 : file d'attente + ANTI-RÉPÉTITION (même texte <20 s
+// ignoré, doublons de file supprimés) + pushAlert silenciable
 // ============================================================
 import { $ } from './utils.js';
 import { S, me } from './state.js';
@@ -74,10 +74,12 @@ export function setVoiceChoice(id){
   if (id) localStorage.setItem('fc_voice', id); else localStorage.removeItem('fc_voice');
 }
 
-// ---------- Audio + FILE D'ATTENTE ----------
+// ---------- Audio + file d'attente + anti-répétition ----------
 let currentAudio = null;
 let queue = [];
 let speaking = false;
+let lastText = '';
+let lastAt = 0;
 
 function stopAll(){
   queue = [];
@@ -146,7 +148,7 @@ function systemSpeak(clean){
 }
 function runSpeak(clean){
   speaking = true;
-  const next = () => { speaking = false; const q = queue.shift(); if (q) runSpeak(q); };
+  const next = () => { speaking = false; const q = queue.shift(); if (q) start(q); };
   const engines = [];
   const isKeyValid = ELEVENLABS_API_KEY && ELEVENLABS_API_KEY !== 'sk_...';
   if (voiceChoice.startsWith('eleven:') && isKeyValid && elevenlabsQuota > 0){
@@ -161,24 +163,36 @@ function runSpeak(clean){
     next();
   })();
 }
+function start(clean){
+  lastText = clean; lastAt = Date.now();
+  runSpeak(clean);
+}
 export function speak(txt, opts = {}){
   if (!S.voiceOn || !('speechSynthesis' in window)) return;
   const clean = txt.replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/gu,'').trim();
   if (!clean) return;
-  if (opts.interrupt){ queue = []; stopAll(); speaking = false; runSpeak(clean); return; }
-  if (speaking || queue.length){ queue.push(clean); if (queue.length > 4) queue.shift(); return; }
-  runSpeak(clean);
+  const now = Date.now();
+  // 🛡️ Anti-répétition : même texte dans les 20 s → ignoré
+  if (!opts.force && clean === lastText && now - lastAt < 20000) return;
+  if (opts.interrupt){ queue = []; stopAll(); speaking = false; start(clean); return; }
+  if (speaking || queue.length){
+    if (queue[queue.length - 1] === clean) return; // déjà en attente
+    queue.push(clean);
+    if (queue.length > 2) queue.shift();
+    return;
+  }
+  start(clean);
 }
-export function testVoice(){ speak('Bonjour, ceci est un test de la voix sélectionnée.', { interrupt:true }); }
+export function testVoice(){ speak('Bonjour, ceci est un test de la voix sélectionnée.', { interrupt:true, force:true }); }
 
 // ---------- Alertes ----------
-export function pushAlert(msg, type='warn', ttl=6000){
+export function pushAlert(msg, type='warn', ttl=6000, opts={}){
   const el = document.createElement('div');
   el.className = 'alert ' + type;
   el.textContent = msg;
   $('#alerts').prepend(el);
   if (canVibrate && navigator.vibrate) navigator.vibrate(type==='warn'?[200,100,200]:[100]);
-  if (type==='warn') speak(msg);
+  if (type==='warn' && !opts.silent) speak(msg);
   setTimeout(()=>el.remove(), ttl);
 }
 export function updateStatus(){
