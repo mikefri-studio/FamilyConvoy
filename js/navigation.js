@@ -1,7 +1,7 @@
 // ============================================================
-// NAVIGATION v8 : Valhalla (FR) + OSRM secours
-// Tracé bleu sur la carte PRINCIPALE et sur la carte CONDUITE
-// Anti-crash : zéro caméra, zéro marqueur, timeouts, try/catch
+// NAVIGATION v9 : Valhalla (FR) + OSRM secours
+// Tracé bleu sur carte principale ET conduite
+// Vocal anti-répétition : 1 annonce anticipée + 1 "maintenant"
 // ============================================================
 import { map, driverMap } from './map.js';
 import { S, me, getAll } from './state.js';
@@ -159,7 +159,7 @@ async function routeOSRM(from, to){
   return { engine: 'OSRM', coords, maneuvers, summary: { km: rt.distance / 1000, min: rt.duration / 60 } };
 }
 
-// ---------- Couche tracé sur UNE carte (générique) ----------
+// ---------- Couche tracé sur UNE carte (générique, protégée) ----------
 function ensureOn(m, src, line){
   if (!m) return;
   if (!ready(m)){
@@ -261,23 +261,22 @@ function updateBanner(){
   setProgress(pct);
 }
 
-// ---------- Annonces adaptatives ----------
-function thresholds(){
+// ---------- Annonces : 1 anticipée (adaptative) + 1 "maintenant" ----------
+function earlyThreshold(){
   const s = me.speed || 0;
-  if (s >= 80) return [1000, 300];
-  if (s >= 50) return [500, 150];
-  return [200, 50];
+  if (s >= 80) return 800;
+  if (s >= 50) return 400;
+  return 150;
 }
 function announce(nm, dToMan){
-  for (const th of thresholds()){
-    const key = nm.begin + ':' + th;
-    if (dToMan <= th && !nav.announced.has(key)){
-      nav.announced.add(key);
-      speak(`Dans ${Math.round(dToMan/10)*10} mètres, ${nm.text}`);
-    }
+  const keyE = nm.begin + ':early';
+  if (dToMan <= earlyThreshold() && !nav.announced.has(keyE)){
+    nav.announced.add(keyE);
+    speak(`Dans ${Math.round(dToMan/10)*10} mètres, ${nm.text}`);
   }
-  if (dToMan < 25 && !nav.announced.has(nm.begin + ':now')){
-    nav.announced.add(nm.begin + ':now');
+  const keyN = nm.begin + ':now';
+  if (dToMan < 30 && !nav.announced.has(keyN)){
+    nav.announced.add(keyN);
     speak(nm.text);
   }
 }
