@@ -1,5 +1,6 @@
 // ============================================================
-// APP v9 : conduite auto + caméra cap + radio conduite + nav + radars
+// APP v10 : conduite auto + caméra cap + radio conduite + nav
+//           + radars double carte + vocal anti-répétition
 // ============================================================
 import { MAP_STYLES, TESLA_WORKER_URL, ROUTING_WORKER_URL } from './config.js';
 import { $, haversineKm, bearingDeg, ago, freshDev, colorFor, bus } from './utils.js';
@@ -312,8 +313,10 @@ async function updateRoutes(){
 setInterval(updateRoutes, 30000);
 
 // ============================================================
-// 🗣️ Annonce vocale véhicule le plus proche (pas pendant la nav)
+// 🗣️ Véhicule le plus proche : toutes les 5 min, seulement si
+//     la distance a vraiment changé (>300 m) — anti-répétition
 // ============================================================
+let lastNearest = { d:null, t:0 };
 setInterval(()=>{
   if (!S.joined || !S.voiceOn) return;
   if (isNavigating()) return;
@@ -328,6 +331,9 @@ setInterval(()=>{
     if (d<minD){ minD=d; nearest=v; }
   }
   if (nearest) {
+    const now = Date.now();
+    if (lastNearest.d != null && Math.abs(lastNearest.d - minD) < 0.3 && now - lastNearest.t < 300000) return;
+    lastNearest = { d:minD, t:now };
     let pos = '';
     if (S.myHeading != null) {
       const b = bearingDeg(me.lat, me.lng, nearest.lat, nearest.lng);
@@ -336,7 +342,7 @@ setInterval(()=>{
     }
     speak(`${nearest.name} est à ${minD.toFixed(1)} kilomètres ${pos}`);
   }
-}, 120000);
+}, 300000);
 
 // ============================================================
 // ⚡ Tesla (optionnel)
@@ -412,7 +418,7 @@ $('#btn-quit').onclick = () => {
 };
 
 // ============================================================
-// 🚗 Conduite : bascule manuelle + recentrage + caméra cap
+// 🚗 Conduite : bascule manuelle + recentrage
 // ============================================================
 $('#btn-driver').onclick = () => {
   if (S.driverMode){ exitDriver(false); autoSuspended = true; }
