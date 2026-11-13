@@ -1,6 +1,6 @@
 // ============================================================
-// RADARS v5 : couche radars sur la carte PRINCIPALE et la carte
-// CONDUITE (création différée + protégée + auto-réparation)
+// RADARS v6 : couche sur carte principale ET conduite
+// + vocal anti-répétition : UNE seule annonce par radar
 // ============================================================
 import { haversineKm } from './utils.js';
 import { S, me } from './state.js';
@@ -206,7 +206,7 @@ export function initRadarLayer(){
   applyData();
 }
 
-// ---------- Alertes ----------
+// ---------- Alertes : UNE seule voix par radar ----------
 export function checkRadarAlert(){
   if (!settings.enabled || me.lat == null || !S.joined) return;
   if (me.speed < settings.minSpeed) return;
@@ -225,17 +225,15 @@ export function checkRadarAlert(){
       const typeLabel = { accident:'🚗 Accident', travaux:'🚧 Travaux', radar_mobile:'🚨 Radar mobile',
         danger:'⚠️ Danger', bouchon:'🐌 Bouchon', autre:'❓ Autre' }[r.type] || '📍 Signalement';
       msg = `${typeLabel} à ${Math.round(haversineKm(me.lat, me.lng, r.lat, r.lng) * 1000)}m`;
-      speak(`Signalement ${r.type} à proximité`);
     } else {
       const type = r.isMobile ? 'mobile' : 'fixe';
       const vma = r.vma ? ` ${r.vma} km/h` : '';
       const dist = Math.round(haversineKm(me.lat, me.lng, r.lat, r.lng) * 1000);
       msg = `⚠️ Radar ${type}${vma} à ${dist}m`;
-      speak(`Radar ${type} à ${dist} mètres`);
     }
-    if (settings.alertSound === 'voice' || settings.alertSound === 'both') pushAlert(msg, 'warn', 8000);
-    else if (settings.alertSound === 'beep'){ pushAlert(msg, 'warn', 8000); playBeep(); }
-    else pushAlert(msg, 'warn', 8000);
+    pushAlert(msg, 'warn', 8000, { silent:true }); // visuel sans double voix
+    if (settings.alertSound === 'voice' || settings.alertSound === 'both') speak(msg);
+    else if (settings.alertSound === 'beep') playBeep();
   }
   alertedRadars = new Set(
     [...alertedRadars].filter(id => {
