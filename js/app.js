@@ -1,5 +1,5 @@
 // ============================================================
-// APP v6 : GPS, Firebase, voix (file d'attente), radars, nav, diag
+// APP v7 : dock allégé (Inviter/Trajets/cartes dans le menu)
 // ============================================================
 import { MAP_STYLES, TESLA_WORKER_URL, ROUTING_WORKER_URL } from './config.js';
 import { $, haversineKm, bearingDeg, ago, freshDev, colorFor, bus } from './utils.js';
@@ -529,6 +529,14 @@ bindRadio();
 bindHistoryUI();
 bindNavigationUI();
 bindDiagUI();
+
+// ⬇️ Inviter & Trajets vivent dans le menu : on ferme le menu avant d'ouvrir leur écran
+const __shareBtn = $('#btn-share');
+const __oldShare = __shareBtn.onclick;
+__shareBtn.onclick = () => { $('#menu-overlay').classList.add('hidden'); if (__oldShare) __oldShare(); };
+const __histBtn = $('#btn-history');
+const __oldHist = __histBtn.onclick;
+__histBtn.onclick = () => { $('#menu-overlay').classList.add('hidden'); if (__oldHist) __oldHist(); };
 
 $('#btn-radar').classList.toggle('active', isRadarsEnabled());
 
