@@ -28,7 +28,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;o
 .alert.success{border-color:#66bb6a}
 @keyframes drop{from{opacity:0;transform:translateY(-14px)}to{opacity:1;transform:none}}
 
-/* ===== Bandeau navigation ===== */
+/* Bandeau navigation */
 .nav-banner{position:absolute;top:12px;left:50%;transform:translateX(-50%);z-index:30;width:min(94%,420px);border-radius:20px;padding:12px 14px;color:var(--text)}
 .nav-main{display:flex;align-items:center;gap:12px}
 .nav-icon{font-size:34px;line-height:1;flex:none;width:44px;text-align:center}
@@ -41,14 +41,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;o
 .nav-progress-fill{height:100%;width:0%;background:linear-gradient(90deg,#4285f4,#1a73e8);border-radius:3px;transition:width .6s}
 .nav-actions{display:none!important}
 
-/* Listes nav */
 .nav-list{max-height:22vh;overflow-y:auto;margin-top:6px}
 .nav-item{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 12px;border-radius:12px;background:rgba(127,127,127,.12);margin-bottom:6px;font-size:13px;font-weight:600;cursor:pointer}
 .nav-item:active{transform:scale(.98)}
 .nav-del{cursor:pointer;opacity:.7}
 .nav-empty{font-size:12px;color:var(--muted);padding:6px 2px}
 
-/* Diagnostic */
 .diag-body{margin-top:8px}
 .diag-row{display:flex;justify-content:space-between;gap:10px;padding:8px 10px;border-radius:10px;background:rgba(127,127,127,.1);margin-bottom:6px;font-size:12.5px}
 .diag-row b{font-weight:700;text-align:right}
@@ -76,7 +74,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;o
 .rt .dst{font-weight:800;font-size:13.5px}
 .rt .tm{font-size:10px;color:var(--muted);margin-top:1px}
 
-/* ===== Dock ===== */
+/* Dock */
 .dock{position:absolute;bottom:14px;left:50%;transform:translateX(-50%);z-index:12;display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:2px;padding:8px 10px;border-radius:26px;max-width:96vw;animation:fade .4s}
 .dock-btn{display:flex;flex-direction:column;align-items:center;gap:3px;border:none;background:transparent;color:var(--text);cursor:pointer;padding:7px 7px;border-radius:16px;transition:transform .12s,background .2s;min-width:50px}
 .dock-btn:active{transform:scale(.9)}
@@ -87,18 +85,18 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;o
 .dock-btn.drive{background:linear-gradient(135deg,#ffb74d,#fb8c00);border-radius:16px;padding:7px 10px}
 .dock-btn.drive .lbl{color:#fff}
 
-/* ===== Micro radio : maintenant dans le dock ===== */
+/* Micro radio dans le dock */
 #btn-radio{position:static;width:auto;height:auto;border:none;background:transparent;box-shadow:none;color:var(--text);font-size:inherit;border-radius:16px;touch-action:none;user-select:none;-webkit-user-select:none}
 #btn-radio.recording{background:rgba(198,40,40,.28);animation:pulse 1s infinite}
 #btn-radio.recording .lbl{color:#e53935}
 @keyframes pulse{0%{transform:scale(1)}50%{transform:scale(1.08)}100%{transform:scale(1)}}
 
-.map-switcher{position:absolute;top:12px;right:12px;z-index:11;display:flex;gap:6px;padding:6px;border-radius:16px}
-.map-switcher .sw-btn{width:40px;height:40px;border-radius:11px;border:2px solid transparent;cursor:pointer;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.25);transition:all .2s;background:#1a1a1a;padding:0}
-.map-switcher .sw-btn:hover{transform:scale(1.08)}
-.map-switcher .sw-btn.active{border-color:#fff;box-shadow:0 0 0 2px var(--accent)}
-.map-switcher .sw-btn img{width:100%;height:100%;object-fit:cover;display:block}
-body.driver .map-switcher{display:none}
+/* Fond de carte dans le menu */
+.menu-maps{display:flex;gap:8px;justify-content:center;margin-top:6px;flex-wrap:wrap}
+.menu-maps .sw-btn{width:54px;height:54px;border-radius:12px;border:2px solid transparent;cursor:pointer;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.25);background:#1a1a1a;padding:0;margin-top:0;transition:all .2s}
+.menu-maps .sw-btn img{width:100%;height:100%;object-fit:cover;display:block}
+.menu-maps .sw-btn:hover{transform:scale(1.06)}
+.menu-maps .sw-btn.active{border-color:#fff;box-shadow:0 0 0 2px var(--accent)}
 
 .marker{width:44px;height:44px;border:none;background:transparent;display:flex;align-items:center;justify-content:center;cursor:pointer;border-radius:12px;background-size:cover;background-position:center;filter:drop-shadow(0 2px 5px rgba(0,0,0,.55));transition:transform .15s}
 .marker:active{transform:scale(.92)}
@@ -168,18 +166,14 @@ body.night .maplibregl-canvas{filter:invert(1) hue-rotate(180deg) brightness(.9)
 .checkbox-label input{accent-color:var(--accent);width:16px;height:16px}
 #report-overlay .card{max-width:400px}
 
-/* ============================================================
-   RESPONSIVE MOBILE (≤480px)
-   ============================================================ */
+/* ===== RESPONSIVE MOBILE (≤480px) ===== */
 @media (max-width:480px){
   .header{left:10px;top:10px;gap:6px}
   .pill{padding:7px 11px;font-size:11px}
-  .map-switcher{top:auto;bottom:86px;right:6px;flex-direction:column;padding:4px;gap:4px}
-  .map-switcher .sw-btn{width:32px;height:32px}
   .dock{bottom:10px;flex-wrap:nowrap;gap:0;padding:6px 6px;max-width:99vw;border-radius:22px}
-  .dock-btn{min-width:38px;padding:6px 3px}
-  .dock-btn .ico{font-size:18px}
-  .dock-btn .lbl{font-size:7.5px;letter-spacing:.02em}
+  .dock-btn{min-width:44px;padding:6px 4px}
+  .dock-btn .ico{font-size:20px}
+  .dock-btn .lbl{font-size:8px}
   .panel{bottom:80px;width:min(96%,330px)}
   .panel-body{max-height:24vh}
   .alerts{top:96px;width:min(88%,330px)}
@@ -191,6 +185,7 @@ body.night .maplibregl-canvas{filter:invert(1) hue-rotate(180deg) brightness(.9)
   .card{padding:20px;border-radius:20px}
   .card h1{font-size:20px}
   .emoji-grid{grid-template-columns:repeat(6,1fr)}
+  .menu-maps .sw-btn{width:44px;height:44px}
   .driver-ui{padding:10px}
   .driver-info .big{font-size:34px}
   .driver-info .sub{font-size:12px}
@@ -198,22 +193,7 @@ body.night .maplibregl-canvas{filter:invert(1) hue-rotate(180deg) brightness(.9)
   .driver-grid .l{font-size:8.5px}
 }
 @media (max-width:350px){
-  .dock-btn{min-width:34px}
+  .dock-btn{min-width:38px}
   .dock-btn .lbl{display:none}
-  .map-switcher .sw-btn{width:28px;height:28px}
-}
-
-/* ===== Sélecteur de carte repliable (logo 🗺️) ===== */
-.maps-check{display:none}
-.maps-wrap{position:absolute;top:12px;right:12px;z-index:11;display:flex;flex-direction:column;align-items:flex-end;gap:6px}
-.maps-toggle{width:46px;height:46px;border-radius:14px;font-size:21px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--text);box-shadow:0 2px 10px rgba(0,0,0,.25)}
-.maps-toggle:active{transform:scale(.92)}
-.map-switcher{position:static;top:auto;right:auto;bottom:auto;left:auto;display:none;flex-direction:column;gap:6px;padding:6px;border-radius:16px;box-shadow:0 8px 24px rgba(0,0,0,.3)}
-.maps-check:checked ~ .map-switcher{display:flex}
-.maps-check:checked ~ .maps-toggle{outline:2px solid var(--accent)}
-body.driver .maps-wrap{display:none}
-@media (max-width:480px){
-  .maps-wrap{top:10px;right:8px}
-  .maps-toggle{width:40px;height:40px;font-size:18px}
-  .map-switcher .sw-btn{width:34px;height:34px}
+  .menu-maps .sw-btn{width:38px;height:38px}
 }
