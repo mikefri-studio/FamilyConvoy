@@ -1,5 +1,5 @@
 // ============================================================
-// APP v8 : mode conduite AUTOMATIQUE + radio accessible en conduite
+// APP v9 : conduite auto + caméra cap + radio conduite + nav + radars
 // ============================================================
 import { MAP_STYLES, TESLA_WORKER_URL, ROUTING_WORKER_URL } from './config.js';
 import { $, haversineKm, bearingDeg, ago, freshDev, colorFor, bus } from './utils.js';
@@ -19,10 +19,10 @@ import { bindDiagUI } from './diag.js';
 import * as MAP from './map.js';
 
 // ============================================================
-// 🚗 Mode conduite automatique
+// 🚗 Mode conduite automatique (vitesse) + réversible
 // ============================================================
-let autoEntered = false;     // entré par la vitesse (pas manuellement)
-let autoSuspended = false;   // suspendu après sortie manuelle, jusqu'à l'arrêt
+let autoEntered = false;
+let autoSuspended = false;
 let stoppedSince = 0;
 
 function enterDriver(bySpeed){
@@ -287,7 +287,7 @@ function detectAlerts(){
 }
 
 // ============================================================
-// 🛣️ Itinéraires convoi
+// 🛣️ Itinéraires convoi (worker OpenRouteService)
 // ============================================================
 async function updateRoutes(){
   if (!S.joined || me.lat == null || !ROUTING_WORKER_URL) return;
@@ -311,6 +311,9 @@ async function updateRoutes(){
 }
 setInterval(updateRoutes, 30000);
 
+// ============================================================
+// 🗣️ Annonce vocale véhicule le plus proche (pas pendant la nav)
+// ============================================================
 setInterval(()=>{
   if (!S.joined || !S.voiceOn) return;
   if (isNavigating()) return;
@@ -336,7 +339,7 @@ setInterval(()=>{
 }, 120000);
 
 // ============================================================
-// ⚡ Tesla
+// ⚡ Tesla (optionnel)
 // ============================================================
 if (TESLA_WORKER_URL) {
   $('#btn-tesla').classList.remove('hidden');
@@ -357,7 +360,7 @@ if (TESLA_WORKER_URL) {
 }
 
 // ============================================================
-// 🎮 Événements globaux
+// 🎮 Événements globaux + menu
 // ============================================================
 function toggleFollow(id){
   if (S.followId === id) S.followId = null;
@@ -408,7 +411,9 @@ $('#btn-quit').onclick = () => {
   pushAlert(`🚪 Tu as quitté ${old}`,'warn');
 };
 
-// Bouton CONDUITE = bascule manuelle (suspend l'auto jusqu'à l'arrêt)
+// ============================================================
+// 🚗 Conduite : bascule manuelle + recentrage + caméra cap
+// ============================================================
 $('#btn-driver').onclick = () => {
   if (S.driverMode){ exitDriver(false); autoSuspended = true; }
   else { enterDriver(false); autoSuspended = false; }
@@ -424,6 +429,9 @@ $('#btn-center-me').onclick = () => {
 $('#btn-replay-play').onclick = playReplay;
 $('#btn-replay-close').onclick = closeReplay;
 
+// ============================================================
+// 📤 Partage / appairage
+// ============================================================
 function openShare(mode){
   if (!me.group) { pushAlert('Rejoins d\'abord un convoi','info'); return; }
   S.shareLink = mode === 'pair'
@@ -564,14 +572,14 @@ $('#btn-report-send').onclick = async () => {
 $('#btn-close-report').onclick = () => $('#report-overlay').classList.add('hidden');
 
 // ============================================================
-// ️ Micro flottant en mode conduite (relaye le micro du dock)
+// 🎙️ Micro flottant mode conduite (relaye le micro du dock)
 // ============================================================
 function bindDriverRadio(){
   const fab = $('#btn-radio-fab');
   const real = $('#btn-radio');
   if (!fab || !real) return;
   ['pointerdown','pointerup','pointercancel'].forEach(ev => {
-    fab.addEventListener(ev, e => {
+    fab.addEventListener(ev, () => {
       fab.classList.toggle('recording', ev === 'pointerdown');
       real.dispatchEvent(new PointerEvent(ev, { bubbles:true }));
     });
@@ -579,7 +587,7 @@ function bindDriverRadio(){
 }
 
 // ============================================================
-// 📲 Service worker
+// 📲 Service worker PWA
 // ============================================================
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.getRegistrations().then(registrations => {
@@ -617,6 +625,19 @@ bindNavigationUI();
 bindDiagUI();
 bindDriverRadio();
 
+// 🧭 Bascule caméra "cap vers le haut" en mode conduite
+const headBtn = $('#btn-driver-heading');
+if (headBtn){
+  headBtn.onclick = () => {
+    const on = localStorage.getItem('fc_driver_heading') !== '1';
+    localStorage.setItem('fc_driver_heading', on ? '1' : '0');
+    headBtn.classList.toggle('active', on);
+    pushAlert(on ? '🧭 Caméra : cap vers le haut' : '🧭 Caméra : nord vers le haut', 'info', 2000);
+  };
+  headBtn.classList.toggle('active', localStorage.getItem('fc_driver_heading') === '1');
+}
+
+// Inviter & Trajets vivent dans le menu : fermer le menu avant d'ouvrir leur écran
 const __shareBtn = $('#btn-share');
 const __oldShare = __shareBtn.onclick;
 __shareBtn.onclick = () => { $('#menu-overlay').classList.add('hidden'); if (__oldShare) __oldShare(); };
