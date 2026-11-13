@@ -1,5 +1,5 @@
 // ============================================================
-// APP v7 : dock allégé (Inviter/Trajets/cartes dans le menu)
+// APP v8 : mode conduite AUTOMATIQUE + radio accessible en conduite
 // ============================================================
 import { MAP_STYLES, TESLA_WORKER_URL, ROUTING_WORKER_URL } from './config.js';
 import { $, haversineKm, bearingDeg, ago, freshDev, colorFor, bus } from './utils.js';
@@ -18,6 +18,48 @@ import { bindNavigationUI, navigationTick, stopNavigation, isNavigating } from '
 import { bindDiagUI } from './diag.js';
 import * as MAP from './map.js';
 
+// ============================================================
+// 🚗 Mode conduite automatique
+// ============================================================
+let autoEntered = false;     // entré par la vitesse (pas manuellement)
+let autoSuspended = false;   // suspendu après sortie manuelle, jusqu'à l'arrêt
+let stoppedSince = 0;
+
+function enterDriver(bySpeed){
+  if (S.driverMode) return;
+  S.driverMode = true;
+  autoEntered = !!bySpeed;
+  document.body.classList.add('driver');
+  initDriverMap();
+  setTimeout(render, 150);
+  if (bySpeed) pushAlert('🚗 Mode conduite activé', 'info', 2000);
+}
+function exitDriver(byStop){
+  if (!S.driverMode) return;
+  S.driverMode = false;
+  autoEntered = false;
+  document.body.classList.remove('driver');
+  if (byStop) pushAlert('🅿️ Mode conduite désactivé', 'info', 2000);
+}
+function autoDriverTick(){
+  if (me.speed == null) return;
+  if (me.speed >= 30){
+    stoppedSince = 0;
+    if (!S.driverMode && !autoSuspended) enterDriver(true);
+  } else if (me.speed < 5){
+    if (!stoppedSince) stoppedSince = Date.now();
+    if (S.driverMode && autoEntered && Date.now() - stoppedSince > 60000){
+      exitDriver(true);
+      autoSuspended = false;
+    }
+  } else {
+    stoppedSince = 0;
+  }
+}
+
+// ============================================================
+// 📍 GPS + réseau + batterie + wake lock
+// ============================================================
 function startGPS(){
   if (!navigator.geolocation){ $('#status').textContent='GPS non supporté'; return; }
   navigator.geolocation.watchPosition(p => {
@@ -35,6 +77,7 @@ function startGPS(){
     S.lastGPSUpdate = now;
     updateStatus();
     navigationTick();
+    autoDriverTick();
   }, e => { $('#status').textContent = 'GPS refusé'; pushAlert('⚠️ Autorise la géolocalisation','warn'); },
   { enableHighAccuracy:true, maximumAge:2000, timeout:15000 });
 }
@@ -57,6 +100,9 @@ document.addEventListener('visibilitychange', () => {
   if (wakeLock !== null && document.visibilityState === 'visible') keepScreenOn();
 });
 
+// ============================================================
+// 📡 Partage Firebase
+// ============================================================
 function setRole(r, silent){
   if (me.role === r || !S.refs.myRef) return;
   me.role = r;
@@ -143,8 +189,12 @@ setInterval(() => {
   navigationTick();
 }, 5000);
 
+// ============================================================
+// 🚪 Quitter / rejoindre
+// ============================================================
 function leaveGroup(clearName=false){
   stopNavigation();
+  exitDriver(false);
   endTrip();
   if (S.refs.deviceRef) { R.onDisconnect(S.refs.deviceRef).cancel(); R.set(S.refs.deviceRef, null); }
   if (S.refs.myRef) {
@@ -199,6 +249,9 @@ function join(){
 }
 $('#btn-join').onclick = join;
 
+// ============================================================
+// 🚨 Alertes intelligentes
+// ============================================================
 function detectAlerts(){
   const all = getAll();
   const myEntry = all[me.id];
@@ -233,6 +286,9 @@ function detectAlerts(){
   }
 }
 
+// ============================================================
+// 🛣️ Itinéraires convoi
+// ============================================================
 async function updateRoutes(){
   if (!S.joined || me.lat == null || !ROUTING_WORKER_URL) return;
   const all = getAll();
@@ -279,6 +335,9 @@ setInterval(()=>{
   }
 }, 120000);
 
+// ============================================================
+// ⚡ Tesla
+// ============================================================
 if (TESLA_WORKER_URL) {
   $('#btn-tesla').classList.remove('hidden');
   $('#btn-tesla').onclick = () => window.open(TESLA_WORKER_URL + '/auth', '_blank');
@@ -297,6 +356,9 @@ if (TESLA_WORKER_URL) {
   loadTesla(); setInterval(loadTesla, 60000);
 }
 
+// ============================================================
+// 🎮 Événements globaux
+// ============================================================
 function toggleFollow(id){
   if (S.followId === id) S.followId = null;
   else {
@@ -346,18 +408,12 @@ $('#btn-quit').onclick = () => {
   pushAlert(`🚪 Tu as quitté ${old}`,'warn');
 };
 
+// Bouton CONDUITE = bascule manuelle (suspend l'auto jusqu'à l'arrêt)
 $('#btn-driver').onclick = () => {
-  S.driverMode = true;
-  document.body.classList.add('driver');
-  initDriverMap();
-  setTimeout(render, 150);
-  if (screen.orientation && screen.orientation.lock) screen.orientation.lock('landscape').catch(()=>{});
+  if (S.driverMode){ exitDriver(false); autoSuspended = true; }
+  else { enterDriver(false); autoSuspended = false; }
 };
-$('#btn-exit-driver').onclick = () => {
-  S.driverMode = false;
-  document.body.classList.remove('driver');
-  if (screen.orientation && screen.orientation.unlock) screen.orientation.unlock();
-};
+$('#btn-exit-driver').onclick = () => { exitDriver(false); autoSuspended = true; };
 $('#btn-center-me').onclick = () => {
   if (me.lat != null && MAP.driverMap) {
     MAP.driverMap.flyTo({ center:[me.lng, me.lat], zoom:15, pitch:45, duration:1200 });
@@ -385,6 +441,9 @@ $('#btn-pair').onclick = () => { $('#menu-overlay').classList.add('hidden'); ope
 $('#btn-copy').onclick = () => navigator.clipboard.writeText(S.shareLink).then(()=> pushAlert('Lien copié ! 📋','info'));
 $('#btn-close-share').onclick = () => $('#share-overlay').classList.add('hidden');
 
+// ============================================================
+// 🎤 Voix
+// ============================================================
 function openVoiceOverlay(){
   const list = $('#voice-list');
   const options = listVoiceOptions();
@@ -427,6 +486,9 @@ function bindVoiceUI(){
   $('#btn-close-voice').onclick = () => $('#voice-overlay').classList.add('hidden');
 }
 
+// ============================================================
+// 📷 Radars + réglages
+// ============================================================
 function openRadarSettings(){
   const s = getSettings();
   $('#radar-radius').value = s.displayRadius;
@@ -477,6 +539,9 @@ $('#btn-radar-reset').onclick = () => {
 };
 $('#btn-close-radar').onclick = () => $('#radar-overlay').classList.add('hidden');
 
+// ============================================================
+// 📍 Signalement
+// ============================================================
 $('#btn-report').onclick = () => {
   if (!me.lat){ pushAlert('⚠️ Position GPS non disponible', 'warn'); return; }
   $('#report-pos').textContent = `${me.lat.toFixed(5)}, ${me.lng.toFixed(5)}`;
@@ -498,6 +563,24 @@ $('#btn-report-send').onclick = async () => {
 };
 $('#btn-close-report').onclick = () => $('#report-overlay').classList.add('hidden');
 
+// ============================================================
+// ️ Micro flottant en mode conduite (relaye le micro du dock)
+// ============================================================
+function bindDriverRadio(){
+  const fab = $('#btn-radio-fab');
+  const real = $('#btn-radio');
+  if (!fab || !real) return;
+  ['pointerdown','pointerup','pointercancel'].forEach(ev => {
+    fab.addEventListener(ev, e => {
+      fab.classList.toggle('recording', ev === 'pointerdown');
+      real.dispatchEvent(new PointerEvent(ev, { bubbles:true }));
+    });
+  });
+}
+
+// ============================================================
+// 📲 Service worker
+// ============================================================
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.getRegistrations().then(registrations => {
     for (const registration of registrations) {
@@ -516,6 +599,9 @@ if ('serviceWorker' in navigator) {
   });
 }
 
+// ============================================================
+// 🚀 Démarrage
+// ============================================================
 window.addEventListener('beforeunload', endTrip);
 setInterval(tripTick, 10000);
 setInterval(autoNight, 60000);
@@ -529,8 +615,8 @@ bindRadio();
 bindHistoryUI();
 bindNavigationUI();
 bindDiagUI();
+bindDriverRadio();
 
-// ⬇️ Inviter & Trajets vivent dans le menu : on ferme le menu avant d'ouvrir leur écran
 const __shareBtn = $('#btn-share');
 const __oldShare = __shareBtn.onclick;
 __shareBtn.onclick = () => { $('#menu-overlay').classList.add('hidden'); if (__oldShare) __oldShare(); };
