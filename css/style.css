@@ -1,3 +1,6 @@
+/* ============================================================
+   FAMILY CONVOY — feuille de style unique et nettoyée
+   ============================================================ */
 :root{
   --glass:rgba(255,255,255,.86); --glass-border:rgba(255,255,255,.65);
   --card:#ffffff; --text:#1c1e21; --muted:#6b7280; --accent:#1a73e8;
@@ -11,7 +14,9 @@ body.night{
 body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;overflow:hidden;background:#000;color:var(--text)}
 #map{position:absolute;top:0;bottom:0;width:100%}
 .glass{background:var(--glass);backdrop-filter:blur(16px) saturate(1.5);-webkit-backdrop-filter:blur(16px) saturate(1.5);border:1px solid var(--glass-border);box-shadow:var(--shadow)}
+.hidden{display:none!important}
 
+/* ---------- En-tête ---------- */
 .header{position:absolute;top:12px;left:12px;z-index:10;display:flex;flex-direction:column;gap:8px;align-items:flex-start;animation:fade .4s}
 .pill{display:flex;align-items:center;gap:8px;padding:9px 15px;border-radius:20px;font-size:13px;font-weight:700;color:var(--text)}
 .pill .dot{width:8px;height:8px;border-radius:50%;background:#34a853;box-shadow:0 0 8px #34a853;animation:blink 2s infinite}
@@ -21,14 +26,18 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;o
 @keyframes blink{0%,100%{opacity:1}50%{opacity:.4}}
 @keyframes fade{from{opacity:0}to{opacity:1}}
 
+/* ---------- Alertes ---------- */
 .alerts{position:absolute;top:70px;left:50%;transform:translateX(-50%);z-index:25;display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none;width:min(92%,420px)}
 .alert{background:rgba(18,20,26,.92);color:#fff;border-left:4px solid #ff7043;backdrop-filter:blur(10px);border-radius:14px;padding:11px 18px;font-size:13px;font-weight:600;box-shadow:0 8px 24px rgba(0,0,0,.35);animation:drop .3s}
 .alert.warn{border-color:#ffb300}
 .alert.info{border-color:#40c4ff}
 .alert.success{border-color:#66bb6a}
 @keyframes drop{from{opacity:0;transform:translateY(-14px)}to{opacity:1;transform:none}}
+/* Alertes : jamais sous le bandeau de guidage */
+body.driver .alerts{top:16px}
+body:has(#nav-banner:not(.hidden)) .alerts{top:130px}
 
-/* Bandeau navigation */
+/* ---------- Bandeau navigation ---------- */
 .nav-banner{position:absolute;top:12px;left:50%;transform:translateX(-50%);z-index:30;width:min(94%,420px);border-radius:20px;padding:12px 14px;color:var(--text)}
 .nav-main{display:flex;align-items:center;gap:12px}
 .nav-icon{font-size:34px;line-height:1;flex:none;width:44px;text-align:center}
@@ -47,10 +56,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;o
 .nav-del{cursor:pointer;opacity:.7}
 .nav-empty{font-size:12px;color:var(--muted);padding:6px 2px}
 
+/* ---------- Diagnostic ---------- */
 .diag-body{margin-top:8px}
 .diag-row{display:flex;justify-content:space-between;gap:10px;padding:8px 10px;border-radius:10px;background:rgba(127,127,127,.1);margin-bottom:6px;font-size:12.5px}
 .diag-row b{font-weight:700;text-align:right}
 
+/* ---------- Panneau convoi / solo ---------- */
 .panel{position:absolute;bottom:100px;left:50%;transform:translateX(-50%);width:min(94%,400px);z-index:10;border-radius:22px;overflow:hidden;color:var(--text);animation:fade .4s}
 .panel-head{display:flex;justify-content:space-between;align-items:center;padding:13px 18px;cursor:pointer;font-weight:800;font-size:14px;user-select:none}
 .badge{background:var(--accent);color:#fff;border-radius:10px;padding:2px 9px;font-size:11px;margin-left:6px}
@@ -74,7 +85,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;o
 .rt .dst{font-weight:800;font-size:13.5px}
 .rt .tm{font-size:10px;color:var(--muted);margin-top:1px}
 
-/* Dock */
+/* ---------- Dock ---------- */
 .dock{position:absolute;bottom:14px;left:50%;transform:translateX(-50%);z-index:12;display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:2px;padding:8px 10px;border-radius:26px;max-width:96vw;animation:fade .4s}
 .dock-btn{display:flex;flex-direction:column;align-items:center;gap:3px;border:none;background:transparent;color:var(--text);cursor:pointer;padding:7px 7px;border-radius:16px;transition:transform .12s,background .2s;min-width:50px}
 .dock-btn:active{transform:scale(.9)}
@@ -91,13 +102,14 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;o
 #btn-radio.recording .lbl{color:#e53935}
 @keyframes pulse{0%{transform:scale(1)}50%{transform:scale(1.08)}100%{transform:scale(1)}}
 
-/* Fond de carte dans le menu */
+/* ---------- Fond de carte (menu) ---------- */
 .menu-maps{display:flex;gap:8px;justify-content:center;margin-top:6px;flex-wrap:wrap}
 .menu-maps .sw-btn{width:54px;height:54px;border-radius:12px;border:2px solid transparent;cursor:pointer;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.25);background:#1a1a1a;padding:0;margin-top:0;transition:all .2s}
 .menu-maps .sw-btn img{width:100%;height:100%;object-fit:cover;display:block}
 .menu-maps .sw-btn:hover{transform:scale(1.06)}
 .menu-maps .sw-btn.active{border-color:#fff;box-shadow:0 0 0 2px var(--accent)}
 
+/* ---------- Marqueurs carte ---------- */
 .marker{width:44px;height:44px;border:none;background:transparent;display:flex;align-items:center;justify-content:center;cursor:pointer;border-radius:12px;background-size:cover;background-position:center;filter:drop-shadow(0 2px 5px rgba(0,0,0,.55));transition:transform .15s}
 .marker:active{transform:scale(.92)}
 .marker.av-txt{color:#fff;font-size:16px;font-weight:800}
@@ -108,6 +120,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;o
 .marker.followed{animation:pulseFollow 2s infinite}
 @keyframes pulseFollow{0%,100%{filter:drop-shadow(0 0 3px #00e676) drop-shadow(0 2px 5px rgba(0,0,0,.5))}50%{filter:drop-shadow(0 0 9px #00e676) drop-shadow(0 2px 5px rgba(0,0,0,.5))}}
 
+/* ---------- Overlays / cartes ---------- */
 .overlay{position:fixed;inset:0;background:rgba(8,10,14,.62);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);z-index:50;display:flex;align-items:center;justify-content:center;padding:20px}
 .card{background:var(--card);border-radius:26px;padding:28px;width:min(100%,380px);box-shadow:0 24px 64px rgba(0,0,0,.4);color:var(--text);animation:pop .25s;max-height:92vh;overflow-y:auto}
 @keyframes pop{from{opacity:0;transform:scale(.94)}to{opacity:1;transform:scale(1)}}
@@ -122,7 +135,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;o
 .btn-ghost{background:rgba(127,127,127,.14);color:var(--text)}
 .btn-danger{background:linear-gradient(135deg,#ef5350,#c62828);color:#fff;box-shadow:0 8px 20px rgba(198,40,40,.35)}
 .hint{font-size:12px;color:var(--muted);margin-top:14px;line-height:1.5}
-.hidden{display:none!important}
 #qr-box{display:flex;justify-content:center;margin:16px 0}
 #qr-box img,#qr-box canvas{border-radius:12px;background:#fff;padding:8px}
 #voice-list .row.followed{box-shadow:inset 3px 0 0 var(--accent);background:rgba(26,115,232,.08)}
@@ -134,16 +146,20 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;o
 .file-inp{padding:8px 0!important;background:transparent!important;font-size:12px!important;color:var(--muted)!important}
 .preview{width:52px;height:52px;border-radius:12px;object-fit:cover;box-shadow:0 2px 8px rgba(0,0,0,.25)}
 
+/* ---------- Replay ---------- */
 #replay-map{height:44vh;width:100%;border-radius:16px;overflow:hidden}
 .replay-head{padding:20px 22px 12px}
 .replay-head h1{font-size:17px}
 .replay-foot{padding:14px 22px 20px;display:flex;gap:10px}
 .replay-foot button{margin-top:0}
 
+/* ---------- Mode conduite ---------- */
 body.driver .header,body.driver .panel,body.driver .dock{display:none}
 .driver-ui{position:fixed;inset:0;background:#0b0d10;color:#fff;z-index:20;display:none;flex-direction:column;padding:16px}
 body.driver .driver-ui{display:flex}
 .driver-map{flex:1;border-radius:20px;overflow:hidden;position:relative}
+/* Panneau infos masqué en conduite (la carte prend tout) */
+body.driver .driver-info{display:none}
 .driver-info{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.09);border-radius:20px;padding:16px 18px;margin-top:12px;backdrop-filter:blur(10px)}
 .driver-info .big{font-size:50px;font-weight:900;line-height:1;background:linear-gradient(90deg,#4fc3f7,#1a73e8);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
 .driver-info .sub{font-size:14px;color:#9aa0a6;margin-top:4px;font-weight:600}
@@ -151,14 +167,46 @@ body.driver .driver-ui{display:flex}
 .driver-grid div{background:rgba(255,255,255,.05);border-radius:12px;padding:10px}
 .driver-grid .v{font-size:17px;font-weight:800}
 .driver-grid .l{font-size:9.5px;color:#9aa0a6;text-transform:uppercase;letter-spacing:.05em;margin-top:2px}
-.driver-exit{position:absolute;top:15px;right:15px;background:rgba(255,87,34,.92);color:#fff;border:none;padding:11px 18px;border-radius:20px;font-weight:800;z-index:5;cursor:pointer;backdrop-filter:blur(6px)}
-.driver-center{position:absolute;top:15px;left:15px;background:rgba(26,115,232,.92);color:#fff;border:none;padding:11px 18px;border-radius:20px;font-weight:800;z-index:5;cursor:pointer;backdrop-filter:blur(6px)}
 
+/* Boutons conduite : pills lisibles, jamais superposés */
+.driver-top{position:absolute;top:0;left:0;right:0;display:flex;justify-content:space-between;align-items:flex-start;gap:8px;padding:12px;pointer-events:none;z-index:7}
+.driver-top-right{display:flex;gap:8px;pointer-events:auto}
+.dbtn{pointer-events:auto;border:1px solid rgba(255,255,255,.16);background:rgba(10,13,18,.8);color:#fff;
+  backdrop-filter:blur(8px);border-radius:14px;padding:10px 14px;font-size:13px;font-weight:800;cursor:pointer;
+  box-shadow:0 6px 18px rgba(0,0,0,.4);min-height:44px;transition:transform .12s,background .2s}
+.dbtn:active{transform:scale(.95)}
+.dbtn.active{background:rgba(0,230,118,.92);color:#06281a;border-color:transparent}
+.dbtn.danger{background:rgba(255,87,34,.92)}
+#btn-radio-fab{position:absolute;right:14px;bottom:14px;z-index:7;border:none;min-width:66px;min-height:66px;
+  border-radius:50%;background:linear-gradient(145deg,#ff5252,#c62828);display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:1px;font-size:17px;padding:6px;color:#fff;cursor:pointer;
+  touch-action:none;user-select:none;-webkit-user-select:none;box-shadow:0 8px 24px rgba(198,40,40,.5)}
+#btn-radio-fab span{font-size:9px;font-weight:800;letter-spacing:.06em;text-transform:uppercase}
+#btn-radio-fab:active{transform:scale(.94)}
+#btn-radio-fab.recording{animation:pulse 1s infinite;box-shadow:0 0 0 8px rgba(198,40,40,.3)}
+body.solo #btn-radio-fab{display:none}
+
+/* ---------- Compteur SANS aiguille : anneau + digital ---------- */
+.speedo{position:absolute;left:14px;bottom:14px;width:148px;height:148px;border-radius:50%;
+  background:radial-gradient(circle at 50% 40%,rgba(24,28,36,.94),rgba(8,10,14,.96));
+  border:1px solid rgba(255,255,255,.14);box-shadow:0 10px 30px rgba(0,0,0,.5),inset 0 0 24px rgba(0,0,0,.6);
+  backdrop-filter:blur(8px);display:none;z-index:6;--speedo-color:#38bdf8}
+body.driver .speedo{display:block}
+.speedo-svg{width:100%;height:100%;display:block}
+.speedo-track{fill:none;stroke:rgba(255,255,255,.12);stroke-width:9}
+.speedo-fill{fill:none;stroke:var(--speedo-color);stroke-width:9;stroke-linecap:round;
+  stroke-dasharray:314.16;stroke-dashoffset:314.16;transform:rotate(-90deg);transform-origin:60px 60px;
+  filter:drop-shadow(0 0 8px var(--speedo-color));transition:stroke .3s}
+.speedo-read{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none}
+.speedo-val{font-size:46px;font-weight:900;line-height:1;color:var(--speedo-color);
+  text-shadow:0 0 14px var(--speedo-color);font-variant-numeric:tabular-nums}
+.speedo-unit{font-size:11px;font-weight:800;letter-spacing:.14em;color:rgba(255,255,255,.65);text-transform:uppercase;margin-top:3px}
+.speedo.over .speedo-val{animation:blink 1s infinite}
+
+/* ---------- Nuit / radars / réglages ---------- */
 body.night .maplibregl-canvas{filter:invert(1) hue-rotate(180deg) brightness(.9) saturate(.6)}
-
 .radar-marker{width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:22px;filter:drop-shadow(0 2px 4px rgba(0,0,0,.5));cursor:pointer;transition:transform .2s}
 .radar-marker:hover{transform:scale(1.3)}
-
 .setting-select{width:100%;padding:11px 13px;border:2px solid transparent;border-radius:12px;background:rgba(127,127,127,.13);font-size:14px;font-weight:600;color:var(--text);margin-top:4px;cursor:pointer}
 .setting-select:focus{outline:none;border-color:var(--accent)}
 .radar-types{display:flex;flex-wrap:wrap;gap:10px;margin-top:6px}
@@ -166,7 +214,7 @@ body.night .maplibregl-canvas{filter:invert(1) hue-rotate(180deg) brightness(.9)
 .checkbox-label input{accent-color:var(--accent);width:16px;height:16px}
 #report-overlay .card{max-width:400px}
 
-/* ===== RESPONSIVE MOBILE (≤480px) ===== */
+/* ---------- Responsive mobile ---------- */
 @media (max-width:480px){
   .header{left:10px;top:10px;gap:6px}
   .pill{padding:7px 11px;font-size:11px}
@@ -191,50 +239,13 @@ body.night .maplibregl-canvas{filter:invert(1) hue-rotate(180deg) brightness(.9)
   .driver-info .sub{font-size:12px}
   .driver-grid .v{font-size:14px}
   .driver-grid .l{font-size:8.5px}
+  .dbtn{padding:9px 12px;font-size:12px}
+  #btn-radio-fab{right:10px;bottom:10px;min-width:60px;min-height:60px}
+  .speedo{width:120px;height:120px;left:10px;bottom:10px}
+  .speedo-val{font-size:36px}
 }
 @media (max-width:350px){
   .dock-btn{min-width:38px}
   .dock-btn .lbl{display:none}
   .menu-maps .sw-btn{width:38px;height:38px}
-}
-/* Bouton caméra cap vers le haut (mode conduite) */
-.driver-heading{position:absolute;bottom:15px;left:15px;background:rgba(26,115,232,.92);color:#fff;border:none;
-  padding:11px 14px;border-radius:20px;font-weight:800;z-index:5;cursor:pointer;backdrop-filter:blur(6px);font-size:16px}
-.driver-heading.active{background:rgba(0,230,118,.92);color:#0b0d10}
-
-/* Alertes : jamais sous le bandeau de guidage */
-body.driver .alerts{top:16px}
-body:has(#nav-banner:not(.hidden)) .alerts{top:130px}
-
-
-
-body.driver .driver-info{display:none}
-
-
-
-/* ===== Bouton cap (haut droite carte conduite) ===== */
-.driver-heading{position:absolute;top:15px;right:110px;background:rgba(26,115,232,.92);color:#fff;border:none;width:44px;height:44px;border-radius:50%;font-size:18px;z-index:5;cursor:pointer;backdrop-filter:blur(6px)}
-.driver-heading.active{background:rgba(0,230,118,.92);color:#06281a}
-
-/* ===== Compteur de vitesse (mode conduite) ===== */
-.speedo{position:absolute;left:14px;bottom:14px;width:136px;height:136px;border-radius:50%;
-  background:radial-gradient(circle at 50% 42%,rgba(24,28,36,.92),rgba(8,10,14,.94));
-  border:1px solid rgba(255,255,255,.14);box-shadow:0 10px 30px rgba(0,0,0,.5),inset 0 0 24px rgba(0,0,0,.6);
-  backdrop-filter:blur(8px);display:none;z-index:6;--speedo-color:#38bdf8}
-body.driver .speedo{display:block}
-.speedo-svg{width:100%;height:100%;display:block}
-.speedo-track{fill:none;stroke:rgba(255,255,255,.13);stroke-width:8;stroke-linecap:round}
-.speedo-fill{fill:none;stroke:var(--speedo-color);stroke-width:8;stroke-linecap:round;
-  stroke-dasharray:226.2;stroke-dashoffset:226.2;filter:drop-shadow(0 0 6px var(--speedo-color));transition:stroke .3s}
-.speedo-tick{stroke:rgba(255,255,255,.35);stroke-width:2;stroke-linecap:round}
-.speedo-ticklabel{fill:rgba(255,255,255,.5);font-size:8px;font-weight:700;text-anchor:middle;font-family:inherit}
-.speedo-needle{stroke:#fff;stroke-width:3;stroke-linecap:round;filter:drop-shadow(0 0 3px rgba(255,255,255,.6))}
-.speedo-hub{fill:#fff}
-.speedo-read{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding-top:16px;pointer-events:none}
-.speedo-val{font-size:36px;font-weight:900;line-height:1;color:var(--speedo-color);text-shadow:0 0 12px var(--speedo-color);font-variant-numeric:tabular-nums}
-.speedo-unit{font-size:10px;font-weight:800;letter-spacing:.12em;color:rgba(255,255,255,.6);text-transform:uppercase;margin-top:2px}
-@media (max-width:480px){
-  .speedo{width:112px;height:112px;left:10px;bottom:10px}
-  .speedo-val{font-size:29px}
-  .driver-heading{right:96px;width:40px;height:40px}
 }
