@@ -2,7 +2,7 @@
 // SW v3 : cache app (stale-while-revalidate) + cache tuiles carte
 // (cache-first, 800 tuiles) → zones blanches partiellement couvertes
 // ============================================================
-const VERSION = 'fc-v3';
+const VERSION = 'fc-v4';
 const SHELL = VERSION + '-shell';
 const TILES = VERSION + '-tiles';
 const TILE_MAX = 800;
