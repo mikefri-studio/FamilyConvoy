@@ -68,6 +68,21 @@
     <button class="driver-exit" id="btn-exit-driver">✕ Quitter</button>
     <button class="driver-heading" id="btn-driver-heading" title="Caméra cap vers le haut">🧭</button>
     <button id="btn-radio-fab" title="Maintiens pour parler">🎙️</button>
+
+    <!-- Compteur de vitesse -->
+    <div class="speedo" id="speedo" aria-label="Compteur de vitesse">
+      <svg viewBox="0 0 120 120" class="speedo-svg" aria-hidden="true">
+        <path class="speedo-track" d="M 26.06 93.94 A 48 48 0 1 1 93.94 93.94"/>
+        <path class="speedo-fill" id="speedo-fill" d="M 26.06 93.94 A 48 48 0 1 1 93.94 93.94"/>
+        <g id="speedo-ticks"></g>
+        <g id="speedo-needle-g"><line class="speedo-needle" x1="60" y1="60" x2="102" y2="60"/></g>
+        <circle class="speedo-hub" cx="60" cy="60" r="5"/>
+      </svg>
+      <div class="speedo-read">
+        <div class="speedo-val" id="speedo-val">0</div>
+        <div class="speedo-unit">km/h</div>
+      </div>
+    </div>
   </div>
   <div class="driver-info">
     <div class="big" id="d-next-dist">— km</div>
