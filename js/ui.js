@@ -25,6 +25,7 @@ export function updateDriverUI(all, myEntry){
 }
 
 export function render(){
+    document.body.classList.toggle('solo', !!S.solo);
   const all = getAll();
   const pt = $('#panel-title');
   if (pt) pt.textContent = S.solo ? '🧭 Solo' : '🚗 Convoi';
