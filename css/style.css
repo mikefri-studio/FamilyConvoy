@@ -33,7 +33,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;o
 .alert.info{border-color:#40c4ff}
 .alert.success{border-color:#66bb6a}
 @keyframes drop{from{opacity:0;transform:translateY(-14px)}to{opacity:1;transform:none}}
-/* Alertes : jamais sous le bandeau de guidage */
 body.driver .alerts{top:16px}
 body:has(#nav-banner:not(.hidden)) .alerts{top:130px}
 
@@ -96,7 +95,6 @@ body:has(#nav-banner:not(.hidden)) .alerts{top:130px}
 .dock-btn.drive{background:linear-gradient(135deg,#ffb74d,#fb8c00);border-radius:16px;padding:7px 10px}
 .dock-btn.drive .lbl{color:#fff}
 
-/* Micro radio dans le dock */
 #btn-radio{position:static;width:auto;height:auto;border:none;background:transparent;box-shadow:none;color:var(--text);font-size:inherit;border-radius:16px;touch-action:none;user-select:none;-webkit-user-select:none}
 #btn-radio.recording{background:rgba(198,40,40,.28);animation:pulse 1s infinite}
 #btn-radio.recording .lbl{color:#e53935}
@@ -158,7 +156,6 @@ body.driver .header,body.driver .panel,body.driver .dock{display:none}
 .driver-ui{position:fixed;inset:0;background:#0b0d10;color:#fff;z-index:20;display:none;flex-direction:column;padding:16px}
 body.driver .driver-ui{display:flex}
 .driver-map{flex:1;border-radius:20px;overflow:hidden;position:relative}
-/* Panneau infos masqué en conduite (la carte prend tout) */
 body.driver .driver-info{display:none}
 .driver-info{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.09);border-radius:20px;padding:16px 18px;margin-top:12px;backdrop-filter:blur(10px)}
 .driver-info .big{font-size:50px;font-weight:900;line-height:1;background:linear-gradient(90deg,#4fc3f7,#1a73e8);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
@@ -168,16 +165,17 @@ body.driver .driver-info{display:none}
 .driver-grid .v{font-size:17px;font-weight:800}
 .driver-grid .l{font-size:9.5px;color:#9aa0a6;text-transform:uppercase;letter-spacing:.05em;margin-top:2px}
 
-/* Boutons conduite : pills lisibles, jamais superposés */
-.driver-top{position:absolute;top:0;left:0;right:0;display:flex;justify-content:space-between;align-items:flex-start;gap:8px;padding:12px;pointer-events:none;z-index:7}
-.driver-top-right{display:flex;gap:8px;pointer-events:auto}
+/* Boutons conduite : colonne en BAS à DROITE (pouce) */
+.driver-top{position:absolute;top:auto;bottom:12px;right:12px;left:auto;display:flex;flex-direction:column;align-items:flex-end;gap:8px;padding:0;pointer-events:none;z-index:7}
+.driver-top-right{display:flex;flex-direction:column;align-items:flex-end;gap:8px;pointer-events:auto}
 .dbtn{pointer-events:auto;border:1px solid rgba(255,255,255,.16);background:rgba(10,13,18,.8);color:#fff;
   backdrop-filter:blur(8px);border-radius:14px;padding:10px 14px;font-size:13px;font-weight:800;cursor:pointer;
   box-shadow:0 6px 18px rgba(0,0,0,.4);min-height:44px;transition:transform .12s,background .2s}
 .dbtn:active{transform:scale(.95)}
 .dbtn.active{background:rgba(0,230,118,.92);color:#06281a;border-color:transparent}
 .dbtn.danger{background:rgba(255,87,34,.92)}
-#btn-radio-fab{position:absolute;right:14px;bottom:14px;z-index:7;border:none;min-width:66px;min-height:66px;
+/* Micro convoi : juste au-dessus de la colonne de boutons */
+#btn-radio-fab{position:absolute;right:12px;bottom:172px;z-index:7;border:none;min-width:66px;min-height:66px;
   border-radius:50%;background:linear-gradient(145deg,#ff5252,#c62828);display:flex;flex-direction:column;
   align-items:center;justify-content:center;gap:1px;font-size:17px;padding:6px;color:#fff;cursor:pointer;
   touch-action:none;user-select:none;-webkit-user-select:none;box-shadow:0 8px 24px rgba(198,40,40,.5)}
@@ -240,7 +238,8 @@ body.night .maplibregl-canvas{filter:invert(1) hue-rotate(180deg) brightness(.9)
   .driver-grid .v{font-size:14px}
   .driver-grid .l{font-size:8.5px}
   .dbtn{padding:9px 12px;font-size:12px}
-  #btn-radio-fab{right:10px;bottom:10px;min-width:60px;min-height:60px}
+  .driver-top{bottom:10px;right:10px}
+  #btn-radio-fab{right:10px;bottom:170px;min-width:60px;min-height:60px}
   .speedo{width:120px;height:120px;left:10px;bottom:10px}
   .speedo-val{font-size:36px}
 }
