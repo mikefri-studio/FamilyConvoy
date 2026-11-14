@@ -3,64 +3,100 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Générateur d'icônes Family Convoy</title>
+<title>Family Convoy — export des icônes PNG</title>
 <style>
-  body{font-family:system-ui,sans-serif;background:#0b0d10;color:#e8eaed;display:flex;flex-direction:column;align-items:center;gap:18px;padding:32px}
+  body{font-family:system-ui,sans-serif;background:#0b0d10;color:#e8eaed;display:flex;flex-direction:column;align-items:center;gap:16px;padding:32px}
   h1{font-size:20px}
-  .row{display:flex;gap:14px;flex-wrap:wrap;justify-content:center}
+  input[type=file]{color:#9aa0a6;font-size:13px}
+  label.opt{color:#9aa0a6;font-size:13px;display:flex;gap:8px;align-items:center;cursor:pointer}
+  .row{display:flex;gap:12px;flex-wrap:wrap;justify-content:center}
   button{background:linear-gradient(135deg,#4285f4,#1a73e8);color:#fff;border:none;border-radius:12px;padding:12px 18px;font-weight:800;font-size:14px;cursor:pointer}
+  button:disabled{opacity:.4;cursor:not-allowed}
   button:active{transform:scale(.96)}
-  canvas{border-radius:20px;box-shadow:0 10px 30px rgba(0,0,0,.5)}
-  p{color:#9aa0a6;font-size:13px;max-width:420px;text-align:center;line-height:1.5}
+  canvas{border-radius:24px;box-shadow:0 10px 30px rgba(0,0,0,.5);background:#1a73e8}
+  p{color:#9aa0a6;font-size:13px;max-width:480px;text-align:center;line-height:1.6}
+  code{background:rgba(255,255,255,.1);border-radius:6px;padding:1px 6px}
+  #status{color:#66bb6a;font-size:13px;min-height:18px}
 </style>
 </head>
 <body>
-<h1>🚗 Générateur d'icônes PNG</h1>
+<h1>🚗 Export des icônes PNG</h1>
+<div id="status">Chargement de icons/logo.png…</div>
+<input type="file" id="file" accept="image/png,image/jpeg,image/webp">
+<label class="opt"><input type="checkbox" id="round"> Coins arrondis (192 / 512 / 180)</label>
 <canvas id="preview" width="192" height="192"></canvas>
 <div class="row">
-  <button data-size="192" data-name="icon-192.png">⬇ 192×192</button>
-  <button data-size="512" data-name="icon-512.png">⬇ 512×512</button>
-  <button data-size="512" data-name="icon-maskable-512.png" data-mask="1">⬇ 512 maskable</button>
-  <button data-size="180" data-name="icon-180.png">⬇ 180 (Apple)</button>
+  <button data-size="192" data-name="icon-192.png" disabled>⬇ icon-192.png</button>
+  <button data-size="512" data-name="icon-512.png" disabled>⬇ icon-512.png</button>
+  <button data-size="512" data-name="icon-maskable-512.png" data-mask="1" disabled>⬇ icon-maskable-512.png</button>
+  <button data-size="180" data-name="icon-180.png" disabled>⬇ icon-180.png (Apple)</button>
 </div>
-<p>Enregistre les 4 fichiers dans le dossier <b>icons/</b> à la racine du dépôt, puis commit. Le manifest et index.html les référencent déjà.</p>
+<p>Le logo <code>icons/logo.png</code> est chargé automatiquement. Tu peux aussi en charger un autre ci-dessus.<br>
+Clique les 4 boutons, dépose les PNG dans <code>icons/</code> à la racine, puis commit.<br>
+Le manifest et <code>index.html</code> les référencent déjà.</p>
 <script>
-function draw(size, maskable){
+let img = null;
+const prev = document.getElementById('preview');
+const status = document.getElementById('status');
+const round = document.getElementById('round');
+const buttons = [...document.querySelectorAll('button')];
+
+function paint(ctx, size, useRound){
+  ctx.clearRect(0,0,size,size);
+  ctx.save();
+  if (useRound){
+    const r = size*0.22;
+    ctx.beginPath();
+    ctx.moveTo(r,0);
+    ctx.arcTo(size,0,size,size,r);
+    ctx.arcTo(size,size,0,size,r);
+    ctx.arcTo(0,size,0,0,r);
+    ctx.arcTo(0,0,size,0,r);
+    ctx.closePath();
+    ctx.clip();
+  }
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(img, 0, 0, size, size);
+  ctx.restore();
+}
+function refresh(){
+  if (!img) return;
+  paint(prev.getContext('2d'), 192, round.checked);
+}
+function setImg(src, label){
+  const im = new Image();
+  im.onload = () => {
+    img = im;
+    buttons.forEach(b => b.disabled = false);
+    status.textContent = '✅ ' + label + ' chargé (' + im.naturalWidth + '×' + im.naturalHeight + ')';
+    refresh();
+  };
+  im.onerror = () => { status.textContent = '⚠️ ' + label + ' introuvable — charge un fichier ci-dessus.'; };
+  im.src = src;
+}
+round.addEventListener('change', refresh);
+document.getElementById('file').addEventListener('change', e => {
+  const f = e.target.files[0];
+  if (f) setImg(URL.createObjectURL(f), f.name);
+});
+buttons.forEach(b => b.addEventListener('click', () => {
+  if (!img) return;
+  const size = +b.dataset.size;
+  const mask = b.dataset.mask === '1';
   const c = document.createElement('canvas');
   c.width = c.height = size;
-  const x = c.getContext('2d');
-  const r = maskable ? 0 : size * 0.22;
-  // fond dégradé
-  const g = x.createLinearGradient(0, 0, size, size);
-  g.addColorStop(0, '#4285f4'); g.addColorStop(1, '#1a73e8');
-  x.beginPath();
-  if (r){ x.moveTo(r,0); x.arcTo(size,0,size,size,r); x.arcTo(size,size,0,size,r); x.arcTo(0,size,0,0,r); x.arcTo(0,0,size,0,r); }
-  else x.rect(0,0,size,size);
-  x.closePath(); x.fillStyle = g; x.fill();
-  // halo route
-  x.strokeStyle = 'rgba(255,255,255,.28)'; x.lineWidth = size*0.045; x.lineCap='round';
-  x.beginPath(); x.moveTo(size*0.22, size*0.80); x.quadraticCurveTo(size*0.5, size*0.62, size*0.78, size*0.80); x.stroke();
-  // voiture
-  const s = maskable ? 0.42 : 0.52;
-  x.font = `${size*s}px system-ui, "Segoe UI Emoji", "Apple Color Emoji", sans-serif`;
-  x.textAlign = 'center'; x.textBaseline = 'middle';
-  x.fillText('🚗', size/2, size*(maskable?0.46:0.44));
-  return c;
-}
-const prev = document.getElementById('preview');
-prev.getContext('2d').drawImage(draw(192,false),0,0);
-document.querySelectorAll('button').forEach(b=>{
-  b.onclick = ()=>{
-    const size = +b.dataset.size, mask = b.dataset.mask === '1';
-    draw(size, mask).toBlob(blob=>{
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = b.dataset.name;
-      a.click();
-      setTimeout(()=>URL.revokeObjectURL(a.href), 2000);
-    }, 'image/png');
-  };
-});
+  paint(c.getContext('2d'), size, mask ? false : round.checked);
+  c.toBlob(blob => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = b.dataset.name;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  }, 'image/png');
+}));
+// Chargement auto du logo du dépôt (même origine → canvas non contaminé)
+setImg('../icons/logo.png?v=' + Date.now(), 'icons/logo.png');
 </script>
 </body>
 </html>
