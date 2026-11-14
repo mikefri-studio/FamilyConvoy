@@ -205,3 +205,7 @@ body.night .maplibregl-canvas{filter:invert(1) hue-rotate(180deg) brightness(.9)
 /* Alertes : jamais sous le bandeau de guidage */
 body.driver .alerts{top:16px}
 body:has(#nav-banner:not(.hidden)) .alerts{top:130px}
+
+
+
+body.driver .driver-info{display:none}
