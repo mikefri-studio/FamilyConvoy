@@ -1,5 +1,5 @@
 // ============================================================
-// DIAG : panneau diagnostic in-app (GPS, réseau, nav, voix, radars)
+// DIAG : diagnostic in-app (GPS, réseau, nav, voix, radars, mode)
 // ============================================================
 import { $ } from './utils.js';
 import { S, me } from './state.js';
@@ -16,7 +16,7 @@ function render(){
     row('📍 GPS', me.lat != null ? `${me.lat.toFixed(4)}, ${me.lng.toFixed(4)} · ±${Math.round(me.accuracy||0)} m · ${me.speed} km/h` : 'aucun fix'),
     row('📶 Réseau', `${navigator.onLine ? 'en ligne' : 'HORS LIGNE'}${c.effectiveType ? ' · ' + c.effectiveType : ''}${c.downlink ? ' · ' + c.downlink + ' Mb/s' : ''}`),
     row('🔋 Batterie', S.phoneBattery != null ? S.phoneBattery + ' %' : '?'),
-    row('👥 Convoi', S.joined ? `${me.group} · ${me.name} · rôle ${me.role}` : 'non rejoint'),
+    row('👥 Mode', S.joined ? `convoi ${me.group} · ${me.name} · rôle ${me.role}` : (S.solo ? `solo · ${me.name||'Moi'}` : 'non rejoint')),
     row('🧭 Navigation', (N.active && N.active()) ? `active · ${N.engine ? (N.engine() || 'calcul…') : '?'} · mode ${N.mode ? N.mode() : '?'} · ${N.points ? N.points() : 0} pts · tracés ${N.drawn ? N.drawn() : 0}` : 'inactive'),
     row('🎤 Voix', `${getVoiceChoice() || 'auto (système)'}`),
     row('📷 Radars', `${isRadarsEnabled() ? 'activés' : 'désactivés'} · rayon ${rs.displayRadius} km · alerte ${rs.alertDist} km`),
