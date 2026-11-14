@@ -10,7 +10,7 @@
 <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
 <link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet"/>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-<link href="css/style.css" rel="stylesheet"/>
+<link href="css/style.css?v=9" rel="stylesheet"/>
 </head>
 <body>
 
@@ -64,19 +64,20 @@
 
 <div class="driver-ui">
   <div class="driver-map" id="driver-map">
-    <button class="driver-center" id="btn-center-me">📍 Moi</button>
-    <button class="driver-exit" id="btn-exit-driver">✕ Quitter</button>
-    <button class="driver-heading" id="btn-driver-heading" title="Caméra cap vers le haut">🧭</button>
-    <button id="btn-radio-fab" title="Maintiens pour parler">🎙️</button>
+    <div class="driver-top">
+      <button class="dbtn" id="btn-center-me">📍 Moi</button>
+      <div class="driver-top-right">
+        <button class="dbtn" id="btn-driver-heading" title="Caméra cap vers le haut">🧭 Cap</button>
+        <button class="dbtn danger" id="btn-exit-driver">✕ Quitter</button>
+      </div>
+    </div>
+    <button class="dbtn" id="btn-radio-fab" title="Maintiens pour parler">🎙️<span>Radio</span></button>
 
-    <!-- Compteur de vitesse -->
+    <!-- Compteur sans aiguille : anneau + digital -->
     <div class="speedo" id="speedo" aria-label="Compteur de vitesse">
       <svg viewBox="0 0 120 120" class="speedo-svg" aria-hidden="true">
-        <path class="speedo-track" d="M 26.06 93.94 A 48 48 0 1 1 93.94 93.94"/>
-        <path class="speedo-fill" id="speedo-fill" d="M 26.06 93.94 A 48 48 0 1 1 93.94 93.94"/>
-        <g id="speedo-ticks"></g>
-        <g id="speedo-needle-g"><line class="speedo-needle" x1="60" y1="60" x2="102" y2="60"/></g>
-        <circle class="speedo-hub" cx="60" cy="60" r="5"/>
+        <circle class="speedo-track" cx="60" cy="60" r="50"/>
+        <circle class="speedo-fill" id="speedo-fill" cx="60" cy="60" r="50"/>
       </svg>
       <div class="speedo-read">
         <div class="speedo-val" id="speedo-val">0</div>
@@ -97,7 +98,7 @@
   </div>
 </div>
 
-<!-- Connexion : choix convoi OU solo -->
+<!-- Connexion -->
 <div class="overlay hidden" id="overlay">
   <div class="card">
     <div class="hero">🚗</div>
@@ -306,6 +307,6 @@
   </div>
 </div>
 
-<script type="module" src="js/app.js?v=8"></script>
+<script type="module" src="js/app.js?v=9"></script>
 </body>
 </html>
