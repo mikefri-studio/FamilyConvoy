@@ -1,5 +1,5 @@
 // ============================================================
-// TRIPS : enregistrement des trajets, reprise, prune, historique
+// TRIPS : trajets convoi (Firebase) + solo (local uniquement)
 // ============================================================
 import { R, db } from './db.js';
 import { S, me } from './state.js';
@@ -8,7 +8,7 @@ import { pushAlert } from './notify.js';
 import { openReplay } from './map.js';
 
 export function tripTick(){
-  if (!S.joined || me.lat == null || !S.tripResumeChecked) return;
+  if (!(S.joined || S.solo) || me.lat == null || !S.tripResumeChecked) return;
   const now = Date.now();
   if (!S.trip) S.trip = { id:`${now}`, start:now, dist:0, lastLat:me.lat, lastLng:me.lng, points:[[me.lng, me.lat]], lastMove:now, lastSave:0 };
   const d = haversineKm(S.trip.lastLat, S.trip.lastLng, me.lat, me.lng);
@@ -28,7 +28,7 @@ export function tripTick(){
 }
 
 export function saveTripProgress(){
-  if (!S.joined || !me.group || !S.trip) return;
+  if (!S.joined || !me.group || !S.trip) return; // solo = pas de Firebase
   R.set(R.ref(db, `convoy/${me.group}/history/${S.trip.id}`), {
     name: me.name, start: S.trip.start, end: Date.now(),
     km: +S.trip.dist.toFixed(1), min: Math.round((Date.now()-S.trip.start)/60000),
@@ -38,6 +38,7 @@ export function saveTripProgress(){
 }
 
 export async function resumeTrip(){
+  if (S.solo){ S.tripResumeChecked = true; return; } // solo : trajet neuf
   try {
     const snap = await R.get(R.ref(db, `convoy/${me.group}/history`));
     const val = snap.val() || {};
