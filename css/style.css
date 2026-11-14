@@ -209,3 +209,32 @@ body:has(#nav-banner:not(.hidden)) .alerts{top:130px}
 
 
 body.driver .driver-info{display:none}
+
+
+
+/* ===== Bouton cap (haut droite carte conduite) ===== */
+.driver-heading{position:absolute;top:15px;right:110px;background:rgba(26,115,232,.92);color:#fff;border:none;width:44px;height:44px;border-radius:50%;font-size:18px;z-index:5;cursor:pointer;backdrop-filter:blur(6px)}
+.driver-heading.active{background:rgba(0,230,118,.92);color:#06281a}
+
+/* ===== Compteur de vitesse (mode conduite) ===== */
+.speedo{position:absolute;left:14px;bottom:14px;width:136px;height:136px;border-radius:50%;
+  background:radial-gradient(circle at 50% 42%,rgba(24,28,36,.92),rgba(8,10,14,.94));
+  border:1px solid rgba(255,255,255,.14);box-shadow:0 10px 30px rgba(0,0,0,.5),inset 0 0 24px rgba(0,0,0,.6);
+  backdrop-filter:blur(8px);display:none;z-index:6;--speedo-color:#38bdf8}
+body.driver .speedo{display:block}
+.speedo-svg{width:100%;height:100%;display:block}
+.speedo-track{fill:none;stroke:rgba(255,255,255,.13);stroke-width:8;stroke-linecap:round}
+.speedo-fill{fill:none;stroke:var(--speedo-color);stroke-width:8;stroke-linecap:round;
+  stroke-dasharray:226.2;stroke-dashoffset:226.2;filter:drop-shadow(0 0 6px var(--speedo-color));transition:stroke .3s}
+.speedo-tick{stroke:rgba(255,255,255,.35);stroke-width:2;stroke-linecap:round}
+.speedo-ticklabel{fill:rgba(255,255,255,.5);font-size:8px;font-weight:700;text-anchor:middle;font-family:inherit}
+.speedo-needle{stroke:#fff;stroke-width:3;stroke-linecap:round;filter:drop-shadow(0 0 3px rgba(255,255,255,.6))}
+.speedo-hub{fill:#fff}
+.speedo-read{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding-top:16px;pointer-events:none}
+.speedo-val{font-size:36px;font-weight:900;line-height:1;color:var(--speedo-color);text-shadow:0 0 12px var(--speedo-color);font-variant-numeric:tabular-nums}
+.speedo-unit{font-size:10px;font-weight:800;letter-spacing:.12em;color:rgba(255,255,255,.6);text-transform:uppercase;margin-top:2px}
+@media (max-width:480px){
+  .speedo{width:112px;height:112px;left:10px;bottom:10px}
+  .speedo-val{font-size:29px}
+  .driver-heading{right:96px;width:40px;height:40px}
+}
