@@ -256,6 +256,10 @@ export function pushAlert(msg, type='warn', ttl=6000, opts={}){
   setTimeout(()=>el.remove(), ttl);
 }
 export function updateStatus(){
+  if (S.solo){
+    $('#status').textContent = `${S.netIcon} 🧭 solo · ±${Math.round(me.accuracy||0)}m · ${me.speed} km/h`;
+    return;
+  }
   if (!S.joined) { $('#status').textContent = 'hors convoi'; return; }
   const roleTxt = me.role === 'screen' ? '📺 écran · ' : '';
   $('#status').textContent = `${S.netIcon} ${roleTxt}${S.hidden?'position masquée · ':''}±${Math.round(me.accuracy||0)}m · ${me.speed} km/h`;
