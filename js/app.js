@@ -1,6 +1,5 @@
 // ============================================================
-// APP v10 : conduite auto + caméra cap + radio conduite + nav
-//           + radars double carte + vocal anti-répétition
+// APP v11 : mode SOLO + convoi, conduite auto, nav, radars, voix
 // ============================================================
 import { MAP_STYLES, TESLA_WORKER_URL, ROUTING_WORKER_URL } from './config.js';
 import { $, haversineKm, bearingDeg, ago, freshDev, colorFor, bus } from './utils.js';
@@ -20,50 +19,39 @@ import { bindDiagUI } from './diag.js';
 import * as MAP from './map.js';
 
 // ============================================================
-// 🚗 Mode conduite automatique (vitesse) + réversible
+// 🚗 Conduite automatique
 // ============================================================
-let autoEntered = false;
-let autoSuspended = false;
-let stoppedSince = 0;
-
+let autoEntered = false, autoSuspended = false, stoppedSince = 0;
 function enterDriver(bySpeed){
   if (S.driverMode) return;
-  S.driverMode = true;
-  autoEntered = !!bySpeed;
+  S.driverMode = true; autoEntered = !!bySpeed;
   document.body.classList.add('driver');
-  initDriverMap();
-  setTimeout(render, 150);
+  initDriverMap(); setTimeout(render, 150);
   if (bySpeed) pushAlert('🚗 Mode conduite activé', 'info', 2000);
 }
 function exitDriver(byStop){
   if (!S.driverMode) return;
-  S.driverMode = false;
-  autoEntered = false;
+  S.driverMode = false; autoEntered = false;
   document.body.classList.remove('driver');
   if (byStop) pushAlert('🅿️ Mode conduite désactivé', 'info', 2000);
 }
 function autoDriverTick(){
   if (me.speed == null) return;
-  if (me.speed >= 30){
-    stoppedSince = 0;
-    if (!S.driverMode && !autoSuspended) enterDriver(true);
-  } else if (me.speed < 5){
+  if (me.speed >= 30){ stoppedSince = 0; if (!S.driverMode && !autoSuspended) enterDriver(true); }
+  else if (me.speed < 5){
     if (!stoppedSince) stoppedSince = Date.now();
-    if (S.driverMode && autoEntered && Date.now() - stoppedSince > 60000){
-      exitDriver(true);
-      autoSuspended = false;
-    }
-  } else {
-    stoppedSince = 0;
-  }
+    if (S.driverMode && autoEntered && Date.now() - stoppedSince > 60000){ exitDriver(true); autoSuspended = false; }
+  } else stoppedSince = 0;
 }
 
 // ============================================================
-// 📍 GPS + réseau + batterie + wake lock
+// 📍 GPS (démarré une seule fois, convoi ou solo)
 // ============================================================
+let gpsWatch = null;
 function startGPS(){
+  if (gpsWatch != null) return;
   if (!navigator.geolocation){ $('#status').textContent='GPS non supporté'; return; }
-  navigator.geolocation.watchPosition(p => {
+  gpsWatch = navigator.geolocation.watchPosition(p => {
     const now = Date.now();
     const newLat=p.coords.latitude, newLng=p.coords.longitude;
     if (me.lat != null) {
@@ -76,9 +64,7 @@ function startGPS(){
     me.accuracy = p.coords.accuracy;
     me.speed = Math.round((p.coords.speed||0)*3.6);
     S.lastGPSUpdate = now;
-    updateStatus();
-    navigationTick();
-    autoDriverTick();
+    updateStatus(); navigationTick(); autoDriverTick();
   }, e => { $('#status').textContent = 'GPS refusé'; pushAlert('⚠️ Autorise la géolocalisation','warn'); },
   { enableHighAccuracy:true, maximumAge:2000, timeout:15000 });
 }
@@ -102,7 +88,7 @@ document.addEventListener('visibilitychange', () => {
 });
 
 // ============================================================
-// 📡 Partage Firebase
+// 📡 Partage Firebase (convoi uniquement)
 // ============================================================
 function setRole(r, silent){
   if (me.role === r || !S.refs.myRef) return;
@@ -172,26 +158,30 @@ function startSharing(){
   pruneHistory();
 }
 
+// Tick 5 s : Firebase si convoi ; radars + nav si convoi OU solo
 setInterval(() => {
-  if (!S.joined || S.hidden || me.lat == null || !S.refs.myRef) return;
-  R.set(S.refs.deviceRef, { role: me.role, lat: me.lat, lng: me.lng, battery: S.phoneBattery, updatedAt: Date.now() });
-  const payload = {
-    name: me.name, color: me.colorChoice || colorFor(me.id),
-    emoji: me.emoji || null, hasAvatar: me.hasAvatar || null, avatarTs: me.avatarTs || null
-  };
-  if (me.role === 'gps') {
-    R.update(S.refs.myRef, { ...payload, lat: me.lat, lng: me.lng, speed: me.speed,
-      battery: S.phoneBattery, gpsDevice: me.device, updatedAt: Date.now() });
-  } else {
-    R.update(S.refs.myRef, payload);
+  if (S.joined && !S.hidden && me.lat != null && S.refs.myRef) {
+    R.set(S.refs.deviceRef, { role: me.role, lat: me.lat, lng: me.lng, battery: S.phoneBattery, updatedAt: Date.now() });
+    const payload = {
+      name: me.name, color: me.colorChoice || colorFor(me.id),
+      emoji: me.emoji || null, hasAvatar: me.hasAvatar || null, avatarTs: me.avatarTs || null
+    };
+    if (me.role === 'gps') {
+      R.update(S.refs.myRef, { ...payload, lat: me.lat, lng: me.lng, speed: me.speed,
+        battery: S.phoneBattery, gpsDevice: me.device, updatedAt: Date.now() });
+    } else {
+      R.update(S.refs.myRef, payload);
+    }
   }
-  checkRadarAlert();
-  updateRadarLayer();
-  navigationTick();
+  if ((S.joined || S.solo) && me.lat != null) {
+    checkRadarAlert();
+    updateRadarLayer();
+    navigationTick();
+  }
 }, 5000);
 
 // ============================================================
-// 🚪 Quitter / rejoindre
+// 🚪 Quitter / rejoindre / solo
 // ============================================================
 function leaveGroup(clearName=false){
   stopNavigation();
@@ -204,8 +194,9 @@ function leaveGroup(clearName=false){
   }
   if (S.refs.membersRef && S.refs.membersCb) R.off(S.refs.membersRef, S.refs.membersCb);
   if (S.refs.radioRef && S.refs.radioCb) R.off(S.refs.radioRef, S.refs.radioCb);
-  S.joined = false; S.hidden = false; S.followId = null; me.role = 'gps';
+  S.joined = false; S.solo = false; S.hidden = false; S.followId = null; me.role = 'gps';
   S.tripResumeChecked = false;
+  localStorage.removeItem('fc_solo');
   updateFollowPill(); updateRoleUI();
   S.members = {};
   for (const k of Object.keys(S.trails)) delete S.trails[k];
@@ -240,6 +231,7 @@ function join(){
     localStorage.setItem('fc_person', pairPerson);
   }
   me.name = name; me.group = group;
+  S.solo = false; localStorage.removeItem('fc_solo');
   localStorage.setItem('fc_name', me.name);
   localStorage.setItem('fc_group', me.group);
   $('#overlay').classList.add('hidden');
@@ -249,6 +241,23 @@ function join(){
   speak(`Convoi ${me.group} rejoint`, { interrupt:true });
 }
 $('#btn-join').onclick = join;
+
+// 🧭 Mode solo : tout local, aucun partage
+function startSolo(){
+  S.solo = true; S.joined = false; S.hidden = false;
+  me.name = localStorage.getItem('fc_name') || 'Moi';
+  me.group = '';
+  localStorage.setItem('fc_solo', '1');
+  $('#overlay').classList.add('hidden');
+  $('#group-label').textContent = 'SOLO';
+  S.tripResumeChecked = true;
+  startGPS(); keepScreenOn();
+  loadRadars();
+  updateRoleUI(); updateStatus(); render();
+  pushAlert('🧭 Mode solo : navigation, radars et voix actifs', 'success');
+  speak('Mode solo activé', { interrupt:true });
+}
+$('#btn-solo-start').onclick = () => startSolo();
 
 // ============================================================
 // 🚨 Alertes intelligentes
@@ -288,7 +297,7 @@ function detectAlerts(){
 }
 
 // ============================================================
-// 🛣️ Itinéraires convoi (worker OpenRouteService)
+// 🛣️ Itinéraires convoi
 // ============================================================
 async function updateRoutes(){
   if (!S.joined || me.lat == null || !ROUTING_WORKER_URL) return;
@@ -312,10 +321,6 @@ async function updateRoutes(){
 }
 setInterval(updateRoutes, 30000);
 
-// ============================================================
-// 🗣️ Véhicule le plus proche : toutes les 5 min, seulement si
-//     la distance a vraiment changé (>300 m) — anti-répétition
-// ============================================================
 let lastNearest = { d:null, t:0 };
 setInterval(()=>{
   if (!S.joined || !S.voiceOn) return;
@@ -345,7 +350,7 @@ setInterval(()=>{
 }, 300000);
 
 // ============================================================
-// ⚡ Tesla (optionnel)
+// ⚡ Tesla
 // ============================================================
 if (TESLA_WORKER_URL) {
   $('#btn-tesla').classList.remove('hidden');
@@ -383,13 +388,27 @@ bus.on('follow-stop', () => { updateFollowPill(); render(); });
 bus.on('render', () => render());
 
 $('#btn-menu').onclick = () => {
-  $('#menu-group').textContent = me.group || '—';
+  $('#menu-group').textContent = me.group || (S.solo ? 'SOLO' : '—');
   $('#btn-toggle-hide').textContent = S.hidden ? '👁 Rendre ma position visible' : '👻 Cacher ma position';
+  $('#btn-mode').textContent = S.joined ? '🧭 Passer en mode solo' : '👥 Rejoindre un convoi';
   $('#menu-overlay').classList.remove('hidden');
 };
 $('#btn-close-menu').onclick = () => $('#menu-overlay').classList.add('hidden');
+$('#btn-mode').onclick = () => {
+  $('#menu-overlay').classList.add('hidden');
+  if (S.joined){ const old = me.group; leaveGroup(false); startSolo(); pushAlert(`🧭 Solo (quitté ${old})`,'info'); }
+  else showJoinOverlay(true);
+};
 $('#btn-avatar').onclick = () => { $('#menu-overlay').classList.add('hidden'); openAvatarOverlay(); };
 $('#btn-toggle-hide').onclick = () => {
+  if (S.solo){
+    S.hidden = !S.hidden;
+    pushAlert(S.hidden ? '👻 Position masquée' : '👁 Position visible','info');
+    $('#btn-toggle-hide').textContent = S.hidden ? '👁 Rendre ma position visible' : '👻 Cacher ma position';
+    $('#menu-overlay').classList.add('hidden');
+    updateStatus(); render();
+    return;
+  }
   if (!S.joined) { pushAlert('Rejoins d\'abord un convoi','info'); return; }
   S.hidden = !S.hidden;
   if (S.hidden) {
@@ -418,7 +437,7 @@ $('#btn-quit').onclick = () => {
 };
 
 // ============================================================
-// 🚗 Conduite : bascule manuelle + recentrage
+// 🚗 Conduite manuelle + recentrage
 // ============================================================
 $('#btn-driver').onclick = () => {
   if (S.driverMode){ exitDriver(false); autoSuspended = true; }
@@ -431,12 +450,11 @@ $('#btn-center-me').onclick = () => {
     S.followMe = true;
   }
 };
-
 $('#btn-replay-play').onclick = playReplay;
 $('#btn-replay-close').onclick = closeReplay;
 
 // ============================================================
-// 📤 Partage / appairage
+// 📤 Partage
 // ============================================================
 function openShare(mode){
   if (!me.group) { pushAlert('Rejoins d\'abord un convoi','info'); return; }
@@ -501,7 +519,7 @@ function bindVoiceUI(){
 }
 
 // ============================================================
-// 📷 Radars + réglages
+// 📷 Radars
 // ============================================================
 function openRadarSettings(){
   const s = getSettings();
@@ -578,7 +596,7 @@ $('#btn-report-send').onclick = async () => {
 $('#btn-close-report').onclick = () => $('#report-overlay').classList.add('hidden');
 
 // ============================================================
-// 🎙️ Micro flottant mode conduite (relaye le micro du dock)
+// 🎙️ Radio : bloquée hors convoi (garde en capture)
 // ============================================================
 function bindDriverRadio(){
   const fab = $('#btn-radio-fab');
@@ -591,9 +609,17 @@ function bindDriverRadio(){
     });
   });
 }
+['pointerdown','pointerup','pointercancel'].forEach(ev => {
+  document.addEventListener(ev, e => {
+    if (!S.joined && e.target.closest && e.target.closest('#btn-radio, #btn-radio-fab')){
+      e.stopPropagation();
+      if (ev === 'pointerdown') pushAlert('🎙️ Radio disponible seulement en convoi','info',2500);
+    }
+  }, true);
+});
 
 // ============================================================
-// 📲 Service worker PWA
+// 📲 Service worker
 // ============================================================
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.getRegistrations().then(registrations => {
@@ -631,7 +657,6 @@ bindNavigationUI();
 bindDiagUI();
 bindDriverRadio();
 
-// 🧭 Bascule caméra "cap vers le haut" en mode conduite
 const headBtn = $('#btn-driver-heading');
 if (headBtn){
   headBtn.onclick = () => {
@@ -643,7 +668,6 @@ if (headBtn){
   headBtn.classList.toggle('active', localStorage.getItem('fc_driver_heading') === '1');
 }
 
-// Inviter & Trajets vivent dans le menu : fermer le menu avant d'ouvrir leur écran
 const __shareBtn = $('#btn-share');
 const __oldShare = __shareBtn.onclick;
 __shareBtn.onclick = () => { $('#menu-overlay').classList.add('hidden'); if (__oldShare) __oldShare(); };
@@ -662,6 +686,8 @@ if (storedName && storedGroup) {
   me.name = storedName; me.group = storedGroup.toUpperCase();
   $('#inp-name').value = me.name; $('#inp-group').value = me.group;
   join();
+} else if (localStorage.getItem('fc_solo') === '1') {
+  startSolo();
 } else {
   $('#overlay').classList.remove('hidden');
   $('#inp-name').value = storedName || '';
