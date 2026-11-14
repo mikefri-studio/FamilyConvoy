@@ -1,11 +1,10 @@
 // ============================================================
 // UI : rendu liste, panneau (convoi/solo), conduite, nuit,
-//      compteur de vitesse LISIBLE (graduations chiffrées +
-//      aiguille + arc + digital central)
+//      compteur de vitesse SANS aiguille (anneau + digital)
 // ============================================================
 import { S, me, getAll } from './state.js';
 import { $, ago, haversineKm, bus } from './utils.js';
-import { pushAlert, speak, updateStatus } from './notify.js';
+import { speak } from './notify.js';
 import { applyAvatarToEl, ensureAvatars } from './avatar.js';
 import { updateMapVisuals } from './map.js';
 
@@ -26,50 +25,23 @@ export function updateDriverUI(all, myEntry){
   $('#d-eta').textContent = new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
 }
 
-// ---------- Compteur de vitesse lisible ----------
+// ---------- Compteur sans aiguille : anneau de progression + digital ----------
 export function initSpeedo(){
-  const root=$('#speedo'), fill=$('#speedo-fill'), needle=$('#speedo-needle-g'),
-        val=$('#speedo-val'), ticks=$('#speedo-ticks');
-  if (!root || !fill || !needle || !val) return;
-
-  const L=226.2, MAX=180;
-  const small = window.matchMedia('(max-width:480px)').matches;
-  const size = small ? 122 : 152;
-  root.style.width = size+'px'; root.style.height = size+'px';
-  val.style.fontSize = (small ? 32 : 40)+'px';
-
-  // Graduations : majeures + chiffre tous les 20, mineures tous les 10
-  if (ticks && !ticks.childElementCount){
-    let html='';
-    for (let v=0; v<=MAX; v+=10){
-      const major = v%20===0;
-      const a=(135+270*v/MAX)*Math.PI/180;
-      const r1 = major ? 39 : 42, r2 = 46;
-      const x1=60+r1*Math.cos(a), y1=60+r1*Math.sin(a);
-      const x2=60+r2*Math.cos(a), y2=60+r2*Math.sin(a);
-      html+=`<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}"
-        style="stroke:${major?'rgba(255,255,255,.75)':'rgba(255,255,255,.28)'};stroke-width:${major?2.4:1.2};stroke-linecap:round"/>`;
-      if (major){
-        const tx=60+30*Math.cos(a), ty=60+30*Math.sin(a);
-        html+=`<text x="${tx.toFixed(1)}" y="${(ty+3.4).toFixed(1)}" text-anchor="middle"
-          style="fill:rgba(255,255,255,.92);font-size:9.5px;font-weight:800;font-family:inherit;font-variant-numeric:tabular-nums">${v}</text>`;
-      }
-    }
-    ticks.innerHTML=html;
-  }
-
-  let shown=0;
-  const loop=()=>{
+  const root=$('#speedo'), fill=$('#speedo-fill'), val=$('#speedo-val');
+  if (!root || !fill || !val) return;
+  const C = 314.16, MAX = 180;
+  let shown = 0;
+  const loop = () => {
     requestAnimationFrame(loop);
     if (!S.driverMode) return;
-    const target=Math.max(0, me.speed||0);
-    shown += (target-shown)*0.18;
-    if (Math.abs(target-shown)<0.4) shown=target;
-    const frac=Math.min(1, shown/MAX);
-    fill.style.strokeDashoffset=(L*(1-frac)).toFixed(1);
-    needle.setAttribute('transform',`rotate(${(135+270*frac).toFixed(1)} 60 60)`);
-    val.textContent=Math.round(shown);
-    root.style.setProperty('--speedo-color', shown>130?'#f87171':shown>90?'#fbbf24':'#38bdf8');
+    const target = Math.max(0, me.speed || 0);
+    shown += (target - shown) * 0.18;
+    if (Math.abs(target - shown) < 0.4) shown = target;
+    const frac = Math.min(1, shown / MAX);
+    fill.style.strokeDashoffset = (C * (1 - frac)).toFixed(1);
+    val.textContent = Math.round(shown);
+    root.style.setProperty('--speedo-color', shown>130 ? '#f87171' : shown>90 ? '#fbbf24' : '#38bdf8');
+    root.classList.toggle('over', shown > 130);
   };
   requestAnimationFrame(loop);
 }
