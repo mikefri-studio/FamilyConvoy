@@ -1,8 +1,8 @@
 // ============================================================
-// UI : rendu de la liste, panneau, mode conduite, nuit, voix
+// UI : rendu liste, panneau (convoi ou solo), conduite, nuit
 // ============================================================
 import { S, me, getAll } from './state.js';
-import { $, ago, haversineKm } from './utils.js';
+import { $, ago, haversineKm, bus } from './utils.js';
 import { pushAlert, speak, updateStatus } from './notify.js';
 import { applyAvatarToEl, ensureAvatars } from './avatar.js';
 import { updateMapVisuals } from './map.js';
@@ -17,7 +17,7 @@ export function updateDriverUI(all, myEntry){
   }
   const rc = nearestId ? S.routeCache[nearestId] : null;
   $('#d-next-dist').textContent = (rc && Date.now()-rc.ts<90000) ? `${rc.km.toFixed(1)} km` : (nearest ? `${minD.toFixed(1)} km` : '— km');
-  $('#d-next-name').textContent = nearest ? `👉 ${nearest.name}` : 'tu es seul';
+  $('#d-next-name').textContent = nearest ? `👉 ${nearest.name}` : (S.solo ? 'mode solo' : 'tu es seul');
   $('#d-my-speed').textContent = `${me.speed||0} km/h`;
   $('#d-my-bat').textContent = S.phoneBattery!=null ? `${S.phoneBattery}%` : '—';
   $('#d-count').textContent = Object.keys(all).length;
@@ -26,10 +26,12 @@ export function updateDriverUI(all, myEntry){
 
 export function render(){
   const all = getAll();
+  const pt = $('#panel-title');
+  if (pt) pt.textContent = S.solo ? '🧭 Solo' : '🚗 Convoi';
   $('#convoy-count').textContent = Object.keys(all).length;
 
   updateMapVisuals(all);
-  ensureAvatars(all, render);   // recharge les photos manquantes puis re-rend
+  ensureAvatars(all, render);
 
   const myEntry = all[me.id] || (me.lat!=null ? {lat:me.lat,lng:me.lng} : null);
   let html = '';
@@ -52,7 +54,7 @@ export function render(){
     }
     const subParts = [];
     if (v.devCount > 1) subParts.push(`📱×${v.devCount}`);
-    if (id === me.id && me.role === 'screen') subParts.push('📺 écran');
+    if (id === me.id && me.role === 'screen' && S.joined) subParts.push('📺 écran');
     if (v.speed) subParts.push(`🚀 ${v.speed} km/h`);
     if (v.battery != null) subParts.push(`🔋 ${v.battery}%`);
     html += `<div class="row ${stale?'old':''} ${id===S.followId?'followed':''}" data-id="${id}">
@@ -80,7 +82,6 @@ export function updateFollowPill(){
   }
 }
 
-// ----- Nuit -----
 export function applyNight(on){
   document.body.classList.toggle('night', on);
   $('#btn-night').querySelector('.ico').textContent = on ? '☀️' : '🌙';
@@ -92,7 +93,6 @@ export function autoNight(){
   applyNight(h >= 21 || h < 7);
 }
 
-// ----- Événements UI purs -----
 export function bindCoreUI(){
   $('#panel-head').onclick = () => $('#panel').classList.toggle('collapsed');
   if (window.innerHeight < 640) $('#panel').classList.add('collapsed');
@@ -109,9 +109,7 @@ export function bindCoreUI(){
   };
   $('#list').addEventListener('click', e => {
     const row = e.target.closest('.row');
-    if (row && row.dataset.id) bus_emit_follow(row.dataset.id);
+    if (row && row.dataset.id) bus.emit('follow-toggle', row.dataset.id);
   });
   $('#follow-stop').onclick = () => { S.followId = null; updateFollowPill(); render(); };
 }
-import { bus } from './utils.js';
-const bus_emit_follow = id => bus.emit('follow-toggle', id);
