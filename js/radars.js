@@ -208,7 +208,7 @@ export function initRadarLayer(){
 
 // ---------- Alertes : UNE seule voix par radar ----------
 export function checkRadarAlert(){
-  if (!settings.enabled || me.lat == null || !S.joined) return;
+   if (!settings.enabled || me.lat == null || !(S.joined || S.solo)) return;
   if (me.speed < settings.minSpeed) return;
   const close = radars.filter(r => {
     if (r.isReport && !settings.showReports) return false;
