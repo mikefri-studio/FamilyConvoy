@@ -1,5 +1,6 @@
 // ============================================================
-// UI : rendu liste, panneau (convoi ou solo), conduite, nuit
+// UI : rendu liste, panneau (convoi/solo), conduite, nuit,
+//      compteur de vitesse animé (jauge SVG + aiguille)
 // ============================================================
 import { S, me, getAll } from './state.js';
 import { $, ago, haversineKm, bus } from './utils.js';
@@ -24,8 +25,44 @@ export function updateDriverUI(all, myEntry){
   $('#d-eta').textContent = new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
 }
 
+// ---------- Compteur de vitesse ----------
+export function initSpeedo(){
+  const root=$('#speedo'), fill=$('#speedo-fill'), needle=$('#speedo-needle-g'),
+        val=$('#speedo-val'), ticks=$('#speedo-ticks');
+  if (!root || !fill || !needle || !val) return;
+  const L=226.2, MAX=180;
+  if (ticks && !ticks.childElementCount){
+    let html='';
+    for (let v=0; v<=MAX; v+=20){
+      const a=(135+270*v/MAX)*Math.PI/180;
+      const x1=60+40*Math.cos(a), y1=60+40*Math.sin(a);
+      const x2=60+46*Math.cos(a), y2=60+46*Math.sin(a);
+      html+=`<line class="speedo-tick" x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}"/>`;
+      if (v%60===0){
+        const tx=60+31*Math.cos(a), ty=60+31*Math.sin(a);
+        html+=`<text class="speedo-ticklabel" x="${tx.toFixed(1)}" y="${(ty+3).toFixed(1)}">${v}</text>`;
+      }
+    }
+    ticks.innerHTML=html;
+  }
+  let shown=0;
+  const loop=()=>{
+    requestAnimationFrame(loop);
+    if (!S.driverMode) return;
+    const target=Math.max(0, me.speed||0);
+    shown += (target-shown)*0.18;
+    if (Math.abs(target-shown)<0.4) shown=target;
+    const frac=Math.min(1, shown/MAX);
+    fill.style.strokeDashoffset=(L*(1-frac)).toFixed(1);
+    needle.setAttribute('transform',`rotate(${(135+270*frac).toFixed(1)} 60 60)`);
+    val.textContent=Math.round(shown);
+    root.style.setProperty('--speedo-color', shown>130?'#f87171':shown>90?'#fbbf24':'#38bdf8');
+  };
+  requestAnimationFrame(loop);
+}
+
 export function render(){
-    document.body.classList.toggle('solo', !!S.solo);
+  document.body.classList.toggle('solo', !!S.solo);
   const all = getAll();
   const pt = $('#panel-title');
   if (pt) pt.textContent = S.solo ? '🧭 Solo' : '🚗 Convoi';
@@ -113,4 +150,6 @@ export function bindCoreUI(){
     if (row && row.dataset.id) bus.emit('follow-toggle', row.dataset.id);
   });
   $('#follow-stop').onclick = () => { S.followId = null; updateFollowPill(); render(); };
+
+  initSpeedo();
 }
