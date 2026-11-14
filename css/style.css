@@ -248,3 +248,18 @@ body.night .maplibregl-canvas{filter:invert(1) hue-rotate(180deg) brightness(.9)
   .dock-btn .lbl{display:none}
   .menu-maps .sw-btn{width:38px;height:38px}
 }
+
+
+
+/* ===== Mode PAYSAGE (téléphone horizontal) : carte de guidage
+   collée en haut à gauche. Aucun effet en portrait. ===== */
+@media (orientation:landscape){
+  /* La card de navigation en haut à gauche, largeur contenue */
+  .nav-banner{left:12px;top:12px;right:auto;transform:none;width:min(44%,420px)}
+
+  /* Hors conduite : l'en-tête (pills) passe à droite pour laisser la place */
+  body:not(.driver):has(#nav-banner:not(.hidden)) .header{left:auto;right:12px;top:12px;align-items:flex-end}
+
+  /* Alertes alignées sous la card, à gauche aussi */
+  body:has(#nav-banner:not(.hidden)) .alerts{left:12px;transform:none;top:132px;width:min(44%,420px);align-items:flex-start}
+}
